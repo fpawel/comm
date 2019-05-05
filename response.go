@@ -20,7 +20,7 @@ type Request struct {
 	Config         Config
 	ReadWriter     ReadWriter
 	ResponseParser ResponseParser
-	Logger *structlog.Logger
+	Logger         *structlog.Logger
 }
 
 type ResponseParser = func(request, response []byte) (string, error)
@@ -47,16 +47,15 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 		err = merry.WithMessage(err, "прервано")
 	}
 
-	logArgs := []interface{} {
-		structlog.KeyTime, time.Now().Format("15:04:05.000"),
+	logArgs := []interface{}{
+		structlog.KeyTime, time.Now().Format("15:04:05"),
 		"duration", durafmt.Parse(time.Since(t)),
 	}
-	if len(strResult) > 0 {
-		logArgs = append(logArgs, "результат", strResult)
-	}
-
 
 	if err == nil {
+		if len(strResult) > 0 {
+			logArgs = append(logArgs, "результат", strResult)
+		}
 		request.Logger.Debug(fmt.Sprintf("[% X] --> [% X]", request.Bytes, response), logArgs...)
 	} else {
 		logArgs = append(logArgs,
