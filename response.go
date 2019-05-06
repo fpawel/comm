@@ -60,9 +60,14 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 	} else {
 		logArgs = append(logArgs,
 			"запрос", request.Bytes,
-			"ответ", response,
-			"config", request.Config,
+			"таймаут_получения_ответа_мс", request.Config.ReadTimeoutMillis,
+			"таймаут_окончания_ответа_мс", request.Config.ReadByteTimeoutMillis,
+			"максимальное_количество_попыток_получить_ответ", request.Config.MaxAttemptsRead,
 		)
+		if len(response) > 0 {
+			logArgs = append(logArgs, "ответ", response)
+		}
+
 		request.Logger.PrintErr(err, logArgs...)
 	}
 
@@ -80,11 +85,6 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
 
-		logArgs := []interface{}{
-			"попытка", attempt + 1,
-			"запрос", x.Bytes,
-		}
-
 		t := time.Now()
 
 		if err := x.write(); err != nil {
@@ -99,13 +99,8 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 
 		case r := <-c:
 
-			logArgs = append(logArgs,
-				structlog.KeyTime, time.Now().Format("15:04:05.000"),
-				"duration", durafmt.Parse(time.Since(t)),
-				"ответ", r.response)
-
 			if r.err != nil {
-				return nil, "", x.Logger.Err(r.err, logArgs...)
+				return nil, "", merry.Appendf(r.err, "попытка %d, %s", durafmt.Parse(time.Since(t)))
 			}
 
 			strResult := ""
@@ -114,34 +109,46 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 			}
 
 			if merry.Is(r.err, ErrProtocol) {
+
+				logArgs := []interface{}{
+					structlog.KeyTime, time.Now().Format("15:04:05.000"),
+					"попытка", attempt + 1,
+					"запрос", x.Bytes,
+					"duration", durafmt.Parse(time.Since(t)),
+				}
+				if len(r.response) > 0 {
+					logArgs = append(logArgs, "ответ", r.response)
+				}
+
 				lastError = x.Logger.Err(r.err, logArgs...)
 				time.Sleep(x.Config.ReadByteTimeout())
 				continue
 			}
 			if r.err != nil {
-				return r.response, strResult, x.Logger.Err(r.err, logArgs...)
+				return r.response, strResult, merry.Appendf(r.err, "попытка %d, %s", durafmt.Parse(time.Since(t)))
 			}
 
 			return r.response, strResult, nil
 
 		case <-ctx.Done():
 
-			logArgs = append(logArgs,
-				structlog.KeyTime, time.Now().Format("15:04:05"),
-				"duration", durafmt.Parse(time.Since(t)))
-
-			lastError = x.Logger.Err(ctx.Err(), logArgs...)
-
 			switch ctx.Err() {
 
 			case context.DeadlineExceeded:
+
+				logArgs := []interface{}{
+					structlog.KeyTime, time.Now().Format("15:04:05.000"),
+					"попытка", attempt + 1,
+					"запрос", x.Bytes,
+					"duration", durafmt.Parse(time.Since(t)),
+				}
+
+				lastError = x.Logger.Err(ctx.Err(), logArgs...)
 				continue
 
-			case context.Canceled:
-				return nil, "", context.Canceled
-
 			default:
-				return nil, "", lastError
+				return nil, "", merry.Appendf(ctx.Err(), "попытка %d, %s", durafmt.Parse(time.Since(t)))
+
 			}
 		}
 	}

@@ -12,7 +12,11 @@ import (
 
 func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
 
-	logger = withKeyValue(logger, "действие", fmt.Sprintf("считывание %d регистров начиная с %d", regsCount, firstReg))
+	logger = comm.LogWithKeys(logger,
+		"modbus", "считывание",
+		"количество_регистров", regsCount,
+		"регистр", firstReg,
+	)
 
 	req := Req{
 		Addr:     addr,
@@ -34,7 +38,7 @@ func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, f
 
 func Read3BCDValues(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
 
-	logger = withKeyValue(logger, "формат", fmt.Sprintf("%d значений BCD", count))
+	logger = comm.LogWithKeys(logger, "формат", "BCD", "количество_значений", count)
 
 	var values []float64
 	_, err := Read3(logger, responseReader, addr, var3, uint16(count*2),
@@ -59,7 +63,7 @@ func Read3BCDValues(logger *structlog.Logger, responseReader ResponseReader, add
 }
 
 func ReadUInt16(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
-	logger = withKeyValue(logger, "формат", "uint16")
+	logger = comm.LogWithKeys(logger, "формат", "uint16")
 	_, err = Read3(logger, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = binary.LittleEndian.Uint16(response[3:5])
@@ -69,7 +73,7 @@ func ReadUInt16(logger *structlog.Logger, responseReader ResponseReader, addr Ad
 }
 
 func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
-	logger = withKeyValue(logger, "формат", "bcd")
+	logger = comm.LogWithKeys(logger, "формат", "bcd")
 	_, err = Read3(logger, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
@@ -83,7 +87,7 @@ func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr
 
 func Write32FloatProto(logger *structlog.Logger, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
 
-	logger = withKeyValue(logger, "действие", fmt.Sprintf("отправка команды %d(%v)", deviceCommandCode, value))
+	logger = comm.LogWithKeys(logger, "действие", fmt.Sprintf("отправка команды %d(%v)", deviceCommandCode, value))
 
 	req := Write32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)
 
@@ -97,8 +101,4 @@ func Write32FloatProto(logger *structlog.Logger, responseReader ResponseReader, 
 		return "OK", nil
 	})
 	return err
-}
-
-func withKeyValue(logger *structlog.Logger, key string, value interface{}) *structlog.Logger {
-	return logger.New(key, value).PrependSuffixKeys(key)
 }
