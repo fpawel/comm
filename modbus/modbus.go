@@ -1,44 +1,34 @@
 package modbus
 
 import (
+	"encoding/binary"
+	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
 	"github.com/powerman/structlog"
+	"strconv"
 )
 
-type ProtoCmd byte
-type Addr byte
+const keyModbus = "_modbus"
 
-type Var uint16
+func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
 
-type Req struct {
-	Addr     Addr
-	ProtoCmd ProtoCmd
-	Data     []byte
-}
+	logger = comm.LogWithKeys(logger,
+		keyModbus, "считывание",
+		"количество_регистров", regsCount,
+		"регистр", firstReg,
+	)
 
-type DevCmd uint16
+	req := Request{
+		Addr:     addr,
+		ProtoCmd: 3,
+		Data:     append(uint16b(uint16(firstReg)), uint16b(regsCount)...),
+	}
 
-type Coefficient uint16
-
-type ResponseReader interface {
-	GetResponse(*structlog.Logger, []byte, comm.ResponseParser) ([]byte, error)
-}
-
-func (x Req) Bytes() (b []byte) {
-	b = make([]byte, 4+len(x.Data))
-	b[0] = byte(x.Addr)
-	b[1] = byte(x.ProtoCmd)
-	copy(b[2:], x.Data)
-	n := 2 + len(x.Data)
-	b[n], b[n+1] = CRC16(b[:n])
-	return
-}
-
-func (x Req) GetResponse(logger *structlog.Logger, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
-	return responseReader.GetResponse(logger, x.Bytes(), func(request, response []byte) (string,error) {
-		if err := x.checkResponse(response); err != nil {
-			return "", err
+	return req.GetResponse(logger, responseReader, func(request, response []byte) (string, error) {
+		lenMustBe := int(regsCount)*2 + 5
+		if len(response) != lenMustBe {
+			return "", merry.Errorf("длина ответа %d не равна %d", len(response), lenMustBe)
 		}
 		if parseResponse != nil {
 			return parseResponse(request, response)
@@ -47,75 +37,73 @@ func (x Req) GetResponse(logger *structlog.Logger, responseReader ResponseReader
 	})
 }
 
-func Write32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
-	value float64) Req {
-	r := Req{
-		Addr:     addr,
-		ProtoCmd: protocolCommandCode,
-	}
-	r.Data = []byte{0, 32, 0, 3, 6}
-	r.Data = append(r.Data, uint16b(uint16(deviceCommandCode))...)
-	r.Data = append(r.Data, BCD6(value)...)
-	return r
+func Read3BCDs(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
+
+	logger = comm.LogWithKeys(logger, "формат", "BCD", "количество_значений", count)
+
+	var values []float64
+	_, err := Read3(logger, responseReader, addr, var3, uint16(count*2),
+		func(request, response []byte) (string, error) {
+			var result string
+			for i := 0; i < count; i++ {
+				n := 3 + i*4
+				v, ok := ParseBCD6(response[n:])
+				if !ok {
+					return "", merry.Errorf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
+				}
+				values = append(values, v)
+				if len(result) > 0 {
+					result += ", "
+				}
+				result += fmt.Sprintf("%v", v)
+			}
+			return result, nil
+		})
+	return values, err
+
 }
 
-func NewSwitchGasOven(n byte) Req {
-	return Req{
-		Addr:     0x16,
-		ProtoCmd: 0x10,
-		Data:     []byte{0, 32, 0, 1, 2, 0, n},
-	}
-}
-
-func (x *Req) ParseBCDValue(b []byte) (v float64, err error) {
-	if err = x.checkResponse(b); err != nil {
-		return
-	}
-	if len(b) != 9 {
-		err = ErrProtocol.Here().WithMessagef("ожидалось 9 байт ответа, %d байт получено", len(b))
-		return
-	}
-	var ok bool
-	if v, ok = ParseBCD6(b[3:]); !ok {
-		err = ErrProtocol.Here().WithMessagef("не правильный код BCD: [% X]", b[3:7])
-	}
+func Read3UInt16(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
+	logger = comm.LogWithKeys(logger, "формат", "uint16")
+	_, err = Read3(logger, responseReader, addr, var3, 1,
+		func(_, response []byte) (string, error) {
+			result = binary.LittleEndian.Uint16(response[3:5])
+			return strconv.Itoa(int(result)), nil
+		})
 	return
 }
 
-func (x Req) checkResponse(response []byte) error {
-
-	if len(response) == 0 {
-		return ErrProtocol.Here().WithMessage("нет ответа")
-	}
-
-	if len(response) < 4 {
-		return ErrProtocol.Here().WithMessage("длина ответа меньше 4")
-	}
-
-	if h, l := CRC16(response); h != 0 || l != 0 {
-		return ErrProtocol.Here().WithMessage("CRC16 не ноль")
-	}
-	if response[0] != byte(x.Addr) {
-		return ErrProtocol.Here().WithMessagef("несовпадение адресов запроса %d и ответа %d",
-			x.Addr, response[0])
-	}
-
-	if len(response) == 5 && byte(x.ProtoCmd)|0x80 == response[1] {
-		return ErrProtocol.Here().WithMessagef("аппаратная ошибка %d", response[2])
-	}
-	if response[1] != byte(x.ProtoCmd) {
-		return ErrProtocol.Here().WithMessagef("несовпадение кодов команд запроса %X и ответа %X",
-			x.ProtoCmd, response[1])
-	}
-
-	return nil
-}
-
-func uint16b(v uint16) (b []byte) {
-	b = make([]byte, 2)
-	b[0] = byte(v >> 8)
-	b[1] = byte(v)
+func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
+	logger = comm.LogWithKeys(logger, "формат", "bcd")
+	_, err = Read3(logger, responseReader, addr, var3, 2,
+		func(request []byte, response []byte) (string, error) {
+			var ok bool
+			if result, ok = ParseBCD6(response[3:]); !ok {
+				return "", merry.Errorf("не правильный код BCD % X", response[3:7])
+			}
+			return fmt.Sprintf("%v", result), nil
+		})
 	return
 }
 
-var ErrProtocol = merry.WithMessage(comm.ErrProtocol, "MODBUS failed")
+func Write32(logger *structlog.Logger, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
+
+	logger = comm.LogWithKeys(logger,
+		keyModbus, "запись_в_регистр_32",
+		"команда", deviceCommandCode,
+		"аргумент", value,
+	)
+
+	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)
+
+	_, err := req.GetResponse(logger, responseReader, func(request, response []byte) (string, error) {
+		for i := 2; i < 6; i++ {
+			if request[i] != response[i] {
+				return "", ErrProtocol.Here().
+					WithMessagef("ошибка формата: запрос[2:6]==[% X] != ответ[2:6]==[% X]", request[2:6], response[2:6])
+			}
+		}
+		return "OK", nil
+	})
+	return err
+}

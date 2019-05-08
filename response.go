@@ -48,7 +48,6 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 	}
 
 	logArgs := []interface{}{
-		structlog.KeyTime, time.Now().Format("15:04:05"),
 		"duration", durafmt.Parse(time.Since(t)),
 	}
 
@@ -111,7 +110,6 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 			if merry.Is(r.err, ErrProtocol) {
 
 				logArgs := []interface{}{
-					structlog.KeyTime, time.Now().Format("15:04:05.000"),
 					"попытка", attempt + 1,
 					"запрос", x.Bytes,
 					"duration", durafmt.Parse(time.Since(t)),
@@ -137,7 +135,6 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 			case context.DeadlineExceeded:
 
 				logArgs := []interface{}{
-					structlog.KeyTime, time.Now().Format("15:04:05.000"),
 					"попытка", attempt + 1,
 					"запрос", x.Bytes,
 					"duration", durafmt.Parse(time.Since(t)),
@@ -171,7 +168,6 @@ func (x Request) write() error {
 	if writtenCount != len(x.Bytes) {
 
 		return structlog.New().Err(merry.New("не все байты были записаны"),
-			structlog.KeyTime, time.Now().Format("15:04:05"),
 			"число_записаных_байт", writtenCount,
 			"общее_число_байт", len(x.Bytes),
 			"продолжительность_записи", durafmt.Parse(time.Since(t)))
@@ -225,7 +221,6 @@ func (x Request) read(bytesToReadCount int) ([]byte, error) {
 	}
 	if readCount != bytesToReadCount {
 		return nil, structlog.New().Err(merry.New("не все байты были считаны"),
-			structlog.KeyTime, time.Now().Format("15:04:05"),
 			structlog.KeyStack, structlog.Auto,
 			"ожидаемое_число_байт", bytesToReadCount,
 			"число_считаных_байт", readCount,
