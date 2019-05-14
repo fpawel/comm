@@ -39,16 +39,17 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 	}
 
 	t := time.Now()
-	response, strResult, err := request.getResponse(ctx)
-
-	if merry.Is(err, context.DeadlineExceeded) {
-		err = merry.WithMessage(err, "нет ответа")
-	} else if merry.Is(err, context.Canceled) {
-		err = merry.WithMessage(err, "прервано")
-	}
+	response, strResult, attempt, err := request.getResponse(ctx)
 
 	logArgs := []interface{}{
-		"duration", durafmt.Parse(time.Since(t)),
+		"продолжительность", durafmt.Parse(time.Since(t)),
+	}
+
+	switch err {
+	case context.DeadlineExceeded:
+		err = merry.WithMessage(err, "нет ответа")
+	case context.Canceled:
+		err = merry.WithMessage(err, "прервано")
 	}
 
 	if err == nil {
@@ -62,6 +63,7 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 			"таймаут_получения_ответа_мс", request.Config.ReadTimeoutMillis,
 			"таймаут_окончания_ответа_мс", request.Config.ReadByteTimeoutMillis,
 			"максимальное_количество_попыток_получить_ответ", request.Config.MaxAttemptsRead,
+			"попытка", attempt+1,
 		)
 		if len(response) > 0 {
 			logArgs = append(logArgs, "ответ", response)
@@ -78,7 +80,7 @@ type result struct {
 	err      error
 }
 
-func (x Request) getResponse(mainContext context.Context) ([]byte, string, error) {
+func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, error) {
 
 	var lastError error
 
@@ -87,7 +89,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 		t := time.Now()
 
 		if err := x.write(); err != nil {
-			return nil, "", err
+			return nil, "", attempt, err
 		}
 		ctx, _ := context.WithTimeout(mainContext, x.Config.ReadTimeout())
 		c := make(chan result)
@@ -99,7 +101,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 		case r := <-c:
 
 			if r.err != nil {
-				return nil, "", merry.Appendf(r.err, "попытка %d, %s", durafmt.Parse(time.Since(t)))
+				return nil, "", attempt, r.err
 			}
 
 			strResult := ""
@@ -123,10 +125,10 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 				continue
 			}
 			if r.err != nil {
-				return r.response, strResult, merry.Appendf(r.err, "попытка %d, %s", durafmt.Parse(time.Since(t)))
+				return r.response, strResult, attempt, r.err
 			}
 
-			return r.response, strResult, nil
+			return r.response, strResult, attempt, nil
 
 		case <-ctx.Done():
 
@@ -144,12 +146,12 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, error
 				continue
 
 			default:
-				return nil, "", merry.Appendf(ctx.Err(), "попытка %d, %s", durafmt.Parse(time.Since(t)))
+				return nil, "", attempt, ctx.Err()
 
 			}
 		}
 	}
-	return nil, "", lastError
+	return nil, "", x.Config.MaxAttemptsRead, lastError
 
 }
 
