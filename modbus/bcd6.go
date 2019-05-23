@@ -39,6 +39,7 @@ func BCD6(x float64) []byte {
 
 func PutBCD6(b []byte, x float64) {
 
+	b[0] = 0
 	if x < 0 {
 		b[0] |= 0x80
 	}
