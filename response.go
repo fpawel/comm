@@ -91,6 +91,11 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 		if err := x.write(); err != nil {
 			return nil, "", attempt, err
 		}
+
+		if mainContext == nil {
+			mainContext = context.Background()
+		}
+
 		ctx, _ := context.WithTimeout(mainContext, x.Config.ReadTimeout())
 		c := make(chan result)
 

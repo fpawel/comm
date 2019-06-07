@@ -20,7 +20,6 @@ func NewReader(config Config) *Reader {
 	}
 	return &Reader{
 		config: config,
-		//logger: structlog.New("device", device).AppendPrefixKeys("device"),
 	}
 }
 
