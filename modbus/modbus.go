@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
+	"github.com/fpawel/gohelp"
 	"github.com/powerman/structlog"
 	"strconv"
 )
@@ -13,7 +14,7 @@ const keyModbus = "_modbus"
 
 func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
 
-	logger = comm.LogWithKeys(logger,
+	logger = gohelp.LogWithKeys(logger,
 		keyModbus, "считывание",
 		"количество_регистров", regsCount,
 		"регистр", firstReg,
@@ -39,7 +40,7 @@ func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, f
 
 func Read3BCDs(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
 
-	logger = comm.LogWithKeys(logger, "формат", "BCD", "количество_значений", count)
+	logger = gohelp.LogWithKeys(logger, "формат", "BCD", "количество_значений", count)
 
 	var values []float64
 	_, err := Read3(logger, responseReader, addr, var3, uint16(count*2),
@@ -64,7 +65,7 @@ func Read3BCDs(logger *structlog.Logger, responseReader ResponseReader, addr Add
 }
 
 func Read3UInt16(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
-	logger = comm.LogWithKeys(logger, "формат", "uint16")
+	logger = gohelp.LogWithKeys(logger, "формат", "uint16")
 	_, err = Read3(logger, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = binary.LittleEndian.Uint16(response[3:5])
@@ -74,7 +75,7 @@ func Read3UInt16(logger *structlog.Logger, responseReader ResponseReader, addr A
 }
 
 func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
-	logger = comm.LogWithKeys(logger, "формат", "bcd")
+	logger = gohelp.LogWithKeys(logger, "формат", "bcd")
 	_, err = Read3(logger, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
@@ -88,7 +89,7 @@ func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr
 
 func Write32(logger *structlog.Logger, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
 
-	logger = comm.LogWithKeys(logger,
+	logger = gohelp.LogWithKeys(logger,
 		keyModbus, "запись_в_регистр_32",
 		"команда", deviceCommandCode,
 		"аргумент", value,

@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 	"github.com/ansel1/merry"
-	"github.com/hako/durafmt"
+	"github.com/fpawel/gohelp/helpstr"
 	"github.com/powerman/structlog"
 	"io"
 	"time"
+)
+
+const (
+	LogKeyDuration = "продолжительность"
 )
 
 type ReadWriter interface {
@@ -42,7 +46,7 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 	response, strResult, attempt, err := request.getResponse(ctx)
 
 	logArgs := []interface{}{
-		"продолжительность", durafmt.Parse(time.Since(t)),
+		LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
 	}
 
 	switch err {
@@ -119,7 +123,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 				logArgs := []interface{}{
 					"попытка", attempt + 1,
 					"запрос", x.Bytes,
-					"duration", durafmt.Parse(time.Since(t)),
+					LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
 				}
 				if len(r.response) > 0 {
 					logArgs = append(logArgs, "ответ", r.response)
@@ -144,7 +148,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 				logArgs := []interface{}{
 					"попытка", attempt + 1,
 					"запрос", x.Bytes,
-					"duration", durafmt.Parse(time.Since(t)),
+					LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
 				}
 
 				lastError = x.Logger.Err(ctx.Err(), logArgs...)
@@ -177,7 +181,7 @@ func (x Request) write() error {
 		return structlog.New().Err(merry.New("не все байты были записаны"),
 			"число_записаных_байт", writtenCount,
 			"общее_число_байт", len(x.Bytes),
-			"продолжительность_записи", durafmt.Parse(time.Since(t)))
+			LogKeyDuration, helpstr.FormatDuration(time.Since(t)))
 	}
 	return err
 }
