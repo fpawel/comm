@@ -130,6 +130,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 				}
 
 				lastError = x.Logger.Err(r.err, logArgs...)
+				x.Logger.Debug(r.err, logArgs...)
 				time.Sleep(x.Config.ReadByteTimeout())
 				continue
 			}
@@ -151,7 +152,9 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 					LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
 				}
 
-				lastError = x.Logger.Err(ctx.Err(), logArgs...)
+				lastError = ctx.Err()
+				x.Logger.Debug(ctx.Err(), logArgs...)
+
 				continue
 
 			default:
