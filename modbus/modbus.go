@@ -50,7 +50,7 @@ func Read3BCDs(logger *structlog.Logger, responseReader ResponseReader, addr Add
 				n := 3 + i*4
 				v, ok := ParseBCD6(response[n:])
 				if !ok {
-					return "", merry.Errorf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
+					return "", comm.ErrProtocol.Here().Appendf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
 				}
 				values = append(values, v)
 				if len(result) > 0 {
@@ -80,7 +80,7 @@ func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
 			if result, ok = ParseBCD6(response[3:]); !ok {
-				return "", merry.Errorf("не правильный код BCD % X", response[3:7])
+				return "", comm.ErrProtocol.Here().Appendf("не правильный код BCD % X", response[3:7])
 			}
 			return fmt.Sprintf("%v", result), nil
 		})
