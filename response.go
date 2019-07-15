@@ -51,7 +51,7 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 
 	switch err {
 	case context.DeadlineExceeded:
-		err = merry.WithMessage(err, "нет ответа")
+		err = ErrProtocol.Here().WithMessage("нет ответа")
 	case context.Canceled:
 		err = merry.WithMessage(err, "прервано")
 	}
