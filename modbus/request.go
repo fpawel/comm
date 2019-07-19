@@ -1,6 +1,7 @@
 package modbus
 
 import (
+	"context"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
 	"github.com/powerman/structlog"
@@ -22,7 +23,7 @@ type DevCmd uint16
 type Coefficient uint16
 
 type ResponseReader interface {
-	GetResponse(*structlog.Logger, []byte, comm.ResponseParser) ([]byte, error)
+	GetResponse(*structlog.Logger, context.Context, []byte, comm.ResponseParser) ([]byte, error)
 }
 
 func (x Request) Bytes() (b []byte) {
@@ -35,8 +36,8 @@ func (x Request) Bytes() (b []byte) {
 	return
 }
 
-func (x Request) GetResponse(logger *structlog.Logger, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
-	return responseReader.GetResponse(logger, x.Bytes(), func(request, response []byte) (string, error) {
+func (x Request) GetResponse(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
+	return responseReader.GetResponse(logger, ctx, x.Bytes(), func(request, response []byte) (string, error) {
 		if err := x.checkResponse(response); err != nil {
 			return "", err
 		}

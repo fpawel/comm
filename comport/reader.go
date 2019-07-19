@@ -5,46 +5,55 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
+	"github.com/fpawel/gohelp"
 	"github.com/powerman/structlog"
 	"time"
 )
 
-type Reader struct {
-	config Config
-	port   *Port
+type ReadWriter struct {
+	getConfigFunc     func() Config
+	getCommConfigFunc func() comm.Config
+	port              *Port
+	bounceTimeout     time.Duration
 }
 
-func NewReader(config Config) *Reader {
-	if config.ReadTimeout == 0 {
-		config.ReadTimeout = time.Millisecond
+func NewReadWriter(getConfigFunc func() Config, getCommConfigFunc func() comm.Config) *ReadWriter {
+	return &ReadWriter{
+		getConfigFunc:     getConfigFunc,
+		getCommConfigFunc: getCommConfigFunc,
 	}
-	return &Reader{
-		config: config,
-	}
 }
 
-func (x *Reader) Config() Config {
-	return x.config
+func (x *ReadWriter) SetBounceTimeout(bounceTimeout time.Duration) {
+	x.bounceTimeout = bounceTimeout
 }
 
-func (x *Reader) Opened() bool {
+func (x *ReadWriter) Opened() bool {
 	return x.port != nil
 }
 
-func (x *Reader) Open(name string) error {
-	if x.Opened() {
-		return merry.New("already opened")
+func (x *ReadWriter) ensureOpen(log *structlog.Logger, ctx context.Context) error {
+	if x.port != nil {
+		return nil
 	}
-	x.config.Name = name
-	port, err := OpenPort(&x.config)
+	config := x.getConfigFunc()
+	if config.ReadTimeout == 0 {
+		config.ReadTimeout = time.Millisecond
+	}
+	var err error
+
+	if x.bounceTimeout == 0 {
+		x.port, err = OpenPort(log, &config)
+	} else {
+		x.port, err = OpenPortDebounce(log, &config, x.bounceTimeout, ctx)
+	}
 	if err != nil {
-		return merry.Append(err, name)
+		return merry.Append(err, config.Name)
 	}
-	x.port = port
 	return nil
 }
 
-func (x *Reader) Close() error {
+func (x *ReadWriter) Close() error {
 	if x.port == nil {
 		return nil
 	}
@@ -53,28 +62,35 @@ func (x *Reader) Close() error {
 	return err
 }
 
-func (x *Reader) OpenDebounce(name string, bounceTimeout time.Duration, ctx context.Context) error {
-	if x.Opened() {
-		return merry.New("already opened")
+func (x *ReadWriter) logWrap(log *structlog.Logger) *structlog.Logger {
+	cfg := x.getConfigFunc()
+	return gohelp.LogWithKeys(log, "port", fmt.Sprintf("%s,%d", cfg.Name, cfg.Baud))
+}
+
+func (x *ReadWriter) GetResponse(log *structlog.Logger, ctx context.Context, requestBytes []byte, respParser comm.ResponseParser) ([]byte, error) {
+	return comm.GetResponse(log, ctx, x, comm.Request{
+		Config:         x.getCommConfigFunc(),
+		Bytes:          requestBytes,
+		ResponseParser: respParser,
+	})
+}
+
+func (x *ReadWriter) Write(log *structlog.Logger, ctx context.Context, buf []byte) (int, error) {
+	log = x.logWrap(log)
+	if err := x.ensureOpen(log, ctx); err != nil {
+		return 0, err
 	}
-	x.config.Name = name
-	port, err := OpenPortDebounce(&x.config, bounceTimeout, ctx)
-	if err == nil {
-		x.port = port
+	return x.port.Write(log, buf)
+}
+
+func (x *ReadWriter) Read(log *structlog.Logger, ctx context.Context, buf []byte) (int, error) {
+	log = x.logWrap(log)
+	if err := x.ensureOpen(log, ctx); err != nil {
+		return 0, err
 	}
-	return err
+	return x.port.Read(log, buf)
 }
 
-func (x *Reader) GetResponse(request comm.Request, ctx context.Context) ([]byte, error) {
-	request.Logger = withKeyValue(request.Logger, "port", fmt.Sprintf("%s,%d", x.config.Name, x.config.Baud))
-	request.ReadWriter = x.port
-	return comm.GetResponse(request, ctx)
-}
-
-func (x *Reader) Write(buf []byte) (int, error) {
-	return x.port.Write(buf)
-}
-
-func withKeyValue(logger *structlog.Logger, key string, value interface{}) *structlog.Logger {
-	return logger.New(key, value).PrependSuffixKeys(key)
+func (x *ReadWriter) BytesToReadCount() (int, error) {
+	return x.port.BytesToReadCount()
 }

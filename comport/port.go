@@ -3,6 +3,7 @@ package comport
 import (
 	"context"
 	"github.com/ansel1/merry"
+	"github.com/powerman/structlog"
 	"os"
 	"strings"
 	"sync"
@@ -97,10 +98,107 @@ type structTimeouts struct {
 	WriteTotalTimeoutConstant   uint32
 }
 
-func openPort(name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (p *Port, err error) {
+func (p *Port) Close() error {
+	return p.f.Close()
+}
+
+func (p *Port) Write(log *structlog.Logger, buf []byte) (int, error) {
+	n, err := p.write(buf)
+	if err != nil {
+		return n, log.Err(err, "written_count", n)
+	}
+	return n, nil
+}
+
+func (p *Port) Read(log *structlog.Logger, buf []byte) (int, error) {
+	n, err := p.read(buf)
+	if err != nil {
+		return n, log.Err(err, "read_count", n)
+	}
+	return n, nil
+}
+
+// Discards data written to the port but not transmitted,
+// or data received but not read
+func (p *Port) Flush() error {
+	return purgeComm(p.fd)
+}
+
+// Retrieves information about a communications error and reports the current status of a communications device.
+// The function is called when a communications error occurs,
+// and it clears the device's error flag to enable additional input and output (I/O) operations.
+func (p *Port) ClearCommError(errors *uint32, commStat *CommStat) error {
+	return clearCommError(p.fd, errors, commStat)
+}
+
+func (p *Port) BytesToReadCount() (int, error) {
+	var (
+		errors   uint32
+		commStat CommStat
+	)
+	if err := p.ClearCommError(&errors, &commStat); err != nil {
+		return 0, merry.Append(err, "unable to get bytes to read count")
+	}
+	return int(commStat.InQue), nil
+}
+
+// OpenPort opens a serial port with the specified configuration
+func OpenPort(log *structlog.Logger, c *Config) (*Port, error) {
+	size, par, stop := c.Size, c.Parity, c.StopBits
+	if size == 0 {
+		size = DefaultSize
+	}
+	if par == 0 {
+		par = ParityNone
+	}
+	if stop == 0 {
+		stop = Stop1
+	}
+	port, err := openPort(log, c.Name, c.Baud, size, par, stop, c.ReadTimeout)
+	return port, merry.Wrap(err)
+}
+
+func OpenPortDebounce(log *structlog.Logger, config *Config, timeout time.Duration, ctx context.Context) (port *Port, err error) {
+	ctx, _ = context.WithTimeout(ctx, timeout)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				if err == nil {
+					err = ctx.Err()
+				}
+				return
+			default:
+				if port, err = OpenPort(log, config); err == nil {
+					return
+				}
+			}
+		}
+	}()
+	wg.Wait()
+	return
+}
+
+var (
+	nSetCommState,
+	nSetCommTimeouts,
+	nSetCommMask,
+	nSetupComm,
+	nGetOverlappedResult,
+	nCreateEvent,
+	nResetEvent,
+	nPurgeComm,
+	//nFlushFileBuffers,
+	nClearCommError uintptr
+)
+
+func openPort(log *structlog.Logger, name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (*Port, error) {
 
 	if err := CheckPortNameIsValid(name); err != nil {
-		return nil, err
+		return nil, merry.Wrap(err)
 	}
 
 	if len(name) > 0 && name[0] != '\\' {
@@ -117,20 +215,15 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "the system cannot find the file specified") {
-			return nil, merry.New("нет СОМ порта с таким именем")
+			err = merry.New("нет СОМ порта с таким именем")
 		}
 		if strings.Contains(strings.ToLower(err.Error()), "access is denied") {
-			return nil, merry.New("СОМ порт занят")
+			err = merry.New("СОМ порт занят")
 		}
 		return nil, merry.Wrap(err)
 	}
 
 	f := os.NewFile(uintptr(h), name)
-	defer func() {
-		if err != nil {
-			_ = f.Close()
-		}
-	}()
 
 	if err = setCommState(h, baud, databits, parity, stopbits); err != nil {
 		return nil, err
@@ -162,11 +255,15 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 	return port, nil
 }
 
-func (p *Port) Close() error {
-	return p.f.Close()
+func getProcAddr(lib syscall.Handle, name string) uintptr {
+	addr, err := syscall.GetProcAddress(lib, name)
+	if err != nil {
+		panic(name + " " + err.Error())
+	}
+	return addr
 }
 
-func (p *Port) Write(buf []byte) (int, error) {
+func (p *Port) write(buf []byte) (int, error) {
 	p.wl.Lock()
 	defer p.wl.Unlock()
 
@@ -185,7 +282,7 @@ func (p *Port) Write(buf []byte) (int, error) {
 	return getOverlappedResult(p.fd, p.wo)
 }
 
-func (p *Port) Read(buf []byte) (int, error) {
+func (p *Port) read(buf []byte) (int, error) {
 	if p == nil || p.f == nil {
 		return 0, merry.New("invalid port on read")
 	}
@@ -202,91 +299,6 @@ func (p *Port) Read(buf []byte) (int, error) {
 		return int(done), merry.Wrap(err)
 	}
 	return getOverlappedResult(p.fd, p.ro)
-}
-
-// Discards data written to the port but not transmitted,
-// or data received but not read
-func (p *Port) Flush() error {
-	return purgeComm(p.fd)
-}
-
-// Retrieves information about a communications error and reports the current status of a communications device.
-// The function is called when a communications error occurs,
-// and it clears the device's error flag to enable additional input and output (I/O) operations.
-func (p *Port) ClearCommError(errors *uint32, commStat *CommStat) error {
-	return clearCommError(p.fd, errors, commStat)
-}
-
-
-func (p *Port) BytesToReadCount() (int, error) {
-	var (
-		errors   uint32
-		commStat CommStat
-	)
-	if err := p.ClearCommError(&errors, &commStat); err != nil {
-		return 0, merry.Append(err, "unable to get bytes to read count")
-	}
-	return int(commStat.InQue), nil
-}
-
-// OpenPort opens a serial port with the specified configuration
-func OpenPort(c *Config) (*Port, error) {
-	size, par, stop := c.Size, c.Parity, c.StopBits
-	if size == 0 {
-		size = DefaultSize
-	}
-	if par == 0 {
-		par = ParityNone
-	}
-	if stop == 0 {
-		stop = Stop1
-	}
-	return openPort(c.Name, c.Baud, size, par, stop, c.ReadTimeout)
-}
-
-func OpenPortDebounce(config *Config, timeout time.Duration, ctx context.Context) (port *Port, err error) {
-	ctx, _ = context.WithTimeout(ctx, timeout)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				if err == nil {
-					err = ctx.Err()
-				}
-				return
-			default:
-				if port, err = OpenPort(config); err == nil {
-					return
-				}
-			}
-		}
-	}()
-	wg.Wait()
-	return
-}
-
-var (
-	nSetCommState,
-	nSetCommTimeouts,
-	nSetCommMask,
-	nSetupComm,
-	nGetOverlappedResult,
-	nCreateEvent,
-	nResetEvent,
-	nPurgeComm,
-	//nFlushFileBuffers,
-	nClearCommError uintptr
-)
-
-func getProcAddr(lib syscall.Handle, name string) uintptr {
-	addr, err := syscall.GetProcAddress(lib, name)
-	if err != nil {
-		panic(name + " " + err.Error())
-	}
-	return addr
 }
 
 func setCommState(h syscall.Handle, baud int, databits byte, parity Parity, stopbits StopBits) error {
@@ -454,7 +466,6 @@ func clearCommError(h syscall.Handle, errors *uint32, commStat *CommStat) error 
 	}
 	return nil
 }
-
 
 func init() {
 	k32, err := syscall.LoadLibrary("kernel32.dll")

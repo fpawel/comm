@@ -1,6 +1,7 @@
 package modbus
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/ansel1/merry"
@@ -12,9 +13,9 @@ import (
 
 const keyModbus = "_modbus"
 
-func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
+func Read3(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
 
-	logger = gohelp.LogWithKeys(logger,
+	log = gohelp.LogWithKeys(log,
 		keyModbus, "считывание",
 		"количество_регистров", regsCount,
 		"регистр", firstReg,
@@ -26,7 +27,7 @@ func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, f
 		Data:     append(uint16b(uint16(firstReg)), uint16b(regsCount)...),
 	}
 
-	return req.GetResponse(logger, responseReader, func(request, response []byte) (string, error) {
+	return req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		lenMustBe := int(regsCount)*2 + 5
 		if len(response) != lenMustBe {
 			return "", merry.Errorf("длина ответа %d не равна %d", len(response), lenMustBe)
@@ -38,12 +39,12 @@ func Read3(logger *structlog.Logger, responseReader ResponseReader, addr Addr, f
 	})
 }
 
-func Read3BCDs(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
+func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
 
-	logger = gohelp.LogWithKeys(logger, "формат", "BCD", "количество_значений", count)
+	log = gohelp.LogWithKeys(log, "формат", "BCD", "количество_значений", count)
 
 	var values []float64
-	_, err := Read3(logger, responseReader, addr, var3, uint16(count*2),
+	_, err := Read3(log, ctx, responseReader, addr, var3, uint16(count*2),
 		func(request, response []byte) (string, error) {
 			var result string
 			for i := 0; i < count; i++ {
@@ -64,9 +65,9 @@ func Read3BCDs(logger *structlog.Logger, responseReader ResponseReader, addr Add
 
 }
 
-func Read3UInt16(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
-	logger = gohelp.LogWithKeys(logger, "формат", "uint16")
-	_, err = Read3(logger, responseReader, addr, var3, 1,
+func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
+	log = gohelp.LogWithKeys(log, "формат", "uint16")
+	_, err = Read3(log, ctx, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = binary.LittleEndian.Uint16(response[3:5])
 			return strconv.Itoa(int(result)), nil
@@ -74,9 +75,9 @@ func Read3UInt16(logger *structlog.Logger, responseReader ResponseReader, addr A
 	return
 }
 
-func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
+func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
 	logger = gohelp.LogWithKeys(logger, "формат", "bcd")
-	_, err = Read3(logger, responseReader, addr, var3, 2,
+	_, err = Read3(logger, ctx, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
 			if result, ok = ParseBCD6(response[3:]); !ok {
@@ -87,9 +88,9 @@ func Read3BCD(logger *structlog.Logger, responseReader ResponseReader, addr Addr
 	return
 }
 
-func Write32(logger *structlog.Logger, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
+func Write32(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
 
-	logger = gohelp.LogWithKeys(logger,
+	log = gohelp.LogWithKeys(log,
 		keyModbus, "запись_в_регистр_32",
 		"команда", deviceCommandCode,
 		"аргумент", value,
@@ -97,7 +98,7 @@ func Write32(logger *structlog.Logger, responseReader ResponseReader, addr Addr,
 
 	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)
 
-	_, err := req.GetResponse(logger, responseReader, func(request, response []byte) (string, error) {
+	_, err := req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		for i := 2; i < 6; i++ {
 			if request[i] != response[i] {
 				return "", ErrProtocol.Here().

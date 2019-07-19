@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/ansel1/merry"
+	"github.com/fpawel/gohelp"
 	"github.com/fpawel/gohelp/helpstr"
 	"github.com/powerman/structlog"
-	"io"
 	"time"
 )
 
@@ -15,16 +15,15 @@ const (
 )
 
 type ReadWriter interface {
-	io.ReadWriter
+	Read(log *structlog.Logger, ctx context.Context, p []byte) (n int, err error)
+	Write(log *structlog.Logger, ctx context.Context, p []byte) (n int, err error)
 	BytesToReadCount() (int, error)
 }
 
 type Request struct {
 	Bytes          []byte
 	Config         Config
-	ReadWriter     ReadWriter
 	ResponseParser ResponseParser
-	Logger         *structlog.Logger
 }
 
 type ResponseParser = func(request, response []byte) (string, error)
@@ -37,16 +36,25 @@ type Config struct {
 
 var ErrProtocol = merry.New("serial protocol failed")
 
-func GetResponse(request Request, ctx context.Context) ([]byte, error) {
+func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWriter, request Request) ([]byte, error) {
 	if request.Config.MaxAttemptsRead < 1 {
 		request.Config.MaxAttemptsRead = 1
 	}
 
-	t := time.Now()
-	response, strResult, attempt, err := request.getResponse(ctx)
+	log = gohelp.LogWithKeys(log, "request", fmt.Sprintf("% X", request.Bytes))
 
-	logArgs := []interface{}{
-		LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
+	t := time.Now()
+
+	respReader := responseReader{Request: request, ReadWriter: readWriter}
+
+	response, strResult, attempt, err := respReader.getResponse(log, ctx)
+
+	log = gohelp.LogWithKeys(log,
+		"response", fmt.Sprintf("% X", response),
+		"attempt", attempt+1,
+		LogKeyDuration, helpstr.FormatDuration(time.Since(t)))
+	if len(strResult) > 0 {
+		log = gohelp.LogWithKeys(log, "result", strResult)
 	}
 
 	switch err {
@@ -57,26 +65,14 @@ func GetResponse(request Request, ctx context.Context) ([]byte, error) {
 	}
 
 	if err == nil {
-		if len(strResult) > 0 {
-			logArgs = append(logArgs, "результат", strResult)
-		}
-		request.Logger.Debug(fmt.Sprintf("[% X] --> [% X]", request.Bytes, response), logArgs...)
-	} else {
-		logArgs = append(logArgs,
-			"запрос", request.Bytes,
-			"таймаут_получения_ответа_мс", request.Config.ReadTimeoutMillis,
-			"таймаут_окончания_ответа_мс", request.Config.ReadByteTimeoutMillis,
-			"максимальное_количество_попыток_получить_ответ", request.Config.MaxAttemptsRead,
-			"попытка", attempt+1,
-		)
-		if len(response) > 0 {
-			logArgs = append(logArgs, "ответ", response)
-		}
-
-		request.Logger.PrintErr(err, logArgs...)
+		log.Debug("answer")
 	}
-
 	return response, err
+}
+
+type responseReader struct {
+	Request
+	ReadWriter
 }
 
 type result struct {
@@ -84,15 +80,17 @@ type result struct {
 	err      error
 }
 
-func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, error) {
+func (x responseReader) getResponse(log *structlog.Logger, mainContext context.Context) ([]byte, string, int, error) {
 
 	var lastError error
 
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
 
-		t := time.Now()
+		log = gohelp.LogWithKeys(log,
+			"attempt", attempt+1,
+			"request", x.Bytes)
 
-		if err := x.write(); err != nil {
+		if err := x.write(log, mainContext); err != nil {
 			return nil, "", attempt, err
 		}
 
@@ -103,7 +101,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 		ctx, _ := context.WithTimeout(mainContext, x.Config.ReadTimeout())
 		c := make(chan result)
 
-		go x.waitForResponse(ctx, c)
+		go x.waitForResponse(log, ctx, c)
 
 		select {
 
@@ -119,18 +117,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 			}
 
 			if merry.Is(r.err, ErrProtocol) {
-
-				logArgs := []interface{}{
-					"попытка", attempt + 1,
-					"запрос", x.Bytes,
-					LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
-				}
-				if len(r.response) > 0 {
-					logArgs = append(logArgs, "ответ", r.response)
-				}
-
-				lastError = x.Logger.Err(r.err, logArgs...)
-				x.Logger.Debug(r.err, logArgs...)
+				lastError = r.err
 				time.Sleep(x.Config.ReadByteTimeout())
 				continue
 			}
@@ -145,16 +132,7 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 			switch ctx.Err() {
 
 			case context.DeadlineExceeded:
-
-				logArgs := []interface{}{
-					"попытка", attempt + 1,
-					"запрос", x.Bytes,
-					LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
-				}
-
 				lastError = ctx.Err()
-				x.Logger.Debug(ctx.Err(), logArgs...)
-
 				continue
 
 			default:
@@ -167,29 +145,35 @@ func (x Request) getResponse(mainContext context.Context) ([]byte, string, int, 
 
 }
 
-func (x Request) write() error {
+func (x responseReader) write(log *structlog.Logger, ctx context.Context) error {
+
+	log = gohelp.LogWithKeys(log,
+		"total_bytes_to_write", len(x.Bytes),
+		structlog.KeyStack, structlog.Auto,
+	)
 
 	t := time.Now()
-	writtenCount, err := x.ReadWriter.Write(x.Bytes)
-	for ; err == nil && writtenCount == 0 && time.Since(t) < x.Config.ReadTimeout(); writtenCount, err = x.ReadWriter.Write(x.Bytes) {
+	writtenCount, err := x.ReadWriter.Write(log, ctx, x.Bytes)
+	for ; err == nil && writtenCount == 0 &&
+		time.Since(t) < x.Config.ReadTimeout(); writtenCount, err = x.ReadWriter.Write(log, ctx, x.Bytes) {
 		// COMPORT PENDING
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err != nil {
-		return err
+		return merry.Wrap(err)
 	}
 
 	if writtenCount != len(x.Bytes) {
 
-		return structlog.New().Err(merry.New("не все байты были записаны"),
-			"число_записаных_байт", writtenCount,
-			"общее_число_байт", len(x.Bytes),
-			LogKeyDuration, helpstr.FormatDuration(time.Since(t)))
+		return log.Err(merry.New("не все байты были записаны"),
+			"written_bytes_count", writtenCount,
+			LogKeyDuration, helpstr.FormatDuration(time.Since(t)),
+			structlog.KeyStack, structlog.Auto)
 	}
 	return err
 }
 
-func (x Request) waitForResponse(ctx context.Context, c chan result) {
+func (x responseReader) waitForResponse(log *structlog.Logger, ctx context.Context, c chan result) {
 
 	var response []byte
 	ctxReady := context.Background()
@@ -215,9 +199,9 @@ func (x Request) waitForResponse(ctx context.Context, c chan result) {
 				time.Sleep(time.Millisecond)
 				continue
 			}
-			b, err := x.read(bytesToReadCount)
+			b, err := x.read(log, ctx, bytesToReadCount)
 			if err != nil {
-				c <- result{response, merry.WithMessagef(err, "[% X]", response)}
+				c <- result{response, merry.Wrap(err)}
 				return
 			}
 			response = append(response, b...)
@@ -227,18 +211,23 @@ func (x Request) waitForResponse(ctx context.Context, c chan result) {
 	}
 }
 
-func (x Request) read(bytesToReadCount int) ([]byte, error) {
+func (x responseReader) read(log *structlog.Logger, ctx context.Context, bytesToReadCount int) ([]byte, error) {
+
+	log = gohelp.LogWithKeys(log,
+		"total_bytes_to_read", bytesToReadCount,
+		structlog.KeyStack, structlog.Auto,
+	)
+
 	b := make([]byte, bytesToReadCount)
-	readCount, err := x.ReadWriter.Read(b)
+	readCount, err := x.ReadWriter.Read(log, ctx, b)
 	if err != nil {
 		return nil, merry.Wrap(err)
 	}
 	if readCount != bytesToReadCount {
-		return nil, structlog.New().Err(merry.New("не все байты были считаны"),
-			structlog.KeyStack, structlog.Auto,
-			"ожидаемое_число_байт", bytesToReadCount,
-			"число_считаных_байт", readCount,
-			"ответ", fmt.Sprintf("% X", b[:readCount]))
+		return nil, log.Err(merry.New("не все байты были считаны"),
+			"read_bytes_count", readCount,
+			"response", fmt.Sprintf("% X", b[:readCount]),
+			structlog.KeyStack, structlog.Auto)
 	}
 	return b, nil
 }
