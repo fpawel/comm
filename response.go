@@ -41,7 +41,7 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 		request.Config.MaxAttemptsRead = 1
 	}
 
-	log = gohelp.LogWithKeys(log, "request", fmt.Sprintf("% X", request.Bytes))
+	log = gohelp.LogPrependSuffixKeys(log, "request", fmt.Sprintf("% X", request.Bytes))
 
 	t := time.Now()
 
@@ -49,12 +49,12 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 
 	response, strResult, attempt, err := respReader.getResponse(log, ctx)
 
-	log = gohelp.LogWithKeys(log,
+	log = gohelp.LogPrependSuffixKeys(log,
 		"response", fmt.Sprintf("% X", response),
 		"attempt", attempt+1,
 		LogKeyDuration, helpstr.FormatDuration(time.Since(t)))
 	if len(strResult) > 0 {
-		log = gohelp.LogWithKeys(log, "result", strResult)
+		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
 	}
 
 	switch err {
@@ -86,7 +86,7 @@ func (x responseReader) getResponse(log *structlog.Logger, mainContext context.C
 
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
 
-		log = gohelp.LogWithKeys(log,
+		log = gohelp.LogPrependSuffixKeys(log,
 			"attempt", attempt+1,
 			"request", x.Bytes)
 
@@ -147,7 +147,7 @@ func (x responseReader) getResponse(log *structlog.Logger, mainContext context.C
 
 func (x responseReader) write(log *structlog.Logger, ctx context.Context) error {
 
-	log = gohelp.LogWithKeys(log,
+	log = gohelp.LogPrependSuffixKeys(log,
 		"total_bytes_to_write", len(x.Bytes),
 		structlog.KeyStack, structlog.Auto,
 	)
@@ -213,7 +213,7 @@ func (x responseReader) waitForResponse(log *structlog.Logger, ctx context.Conte
 
 func (x responseReader) read(log *structlog.Logger, ctx context.Context, bytesToReadCount int) ([]byte, error) {
 
-	log = gohelp.LogWithKeys(log,
+	log = gohelp.LogPrependSuffixKeys(log,
 		"total_bytes_to_read", bytesToReadCount,
 		structlog.KeyStack, structlog.Auto,
 	)

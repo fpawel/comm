@@ -64,7 +64,7 @@ func (x *ReadWriter) Close() error {
 
 func (x *ReadWriter) logWrap(log *structlog.Logger) *structlog.Logger {
 	cfg := x.getConfigFunc()
-	return gohelp.LogWithKeys(log, "port", fmt.Sprintf("%s,%d", cfg.Name, cfg.Baud))
+	return gohelp.LogPrependSuffixKeys(log, "port", fmt.Sprintf("%s,%d", cfg.Name, cfg.Baud))
 }
 
 func (x *ReadWriter) GetResponse(log *structlog.Logger, ctx context.Context, requestBytes []byte, respParser comm.ResponseParser) ([]byte, error) {

@@ -15,7 +15,7 @@ const keyModbus = "_modbus"
 
 func Read3(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
 
-	log = gohelp.LogWithKeys(log,
+	log = gohelp.LogPrependSuffixKeys(log,
 		keyModbus, "считывание",
 		"количество_регистров", regsCount,
 		"регистр", firstReg,
@@ -41,7 +41,7 @@ func Read3(log *structlog.Logger, ctx context.Context, responseReader ResponseRe
 
 func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
 
-	log = gohelp.LogWithKeys(log, "формат", "BCD", "количество_значений", count)
+	log = gohelp.LogPrependSuffixKeys(log, "формат", "BCD", "количество_значений", count)
 
 	var values []float64
 	_, err := Read3(log, ctx, responseReader, addr, var3, uint16(count*2),
@@ -66,7 +66,7 @@ func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader Respon
 }
 
 func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
-	log = gohelp.LogWithKeys(log, "формат", "uint16")
+	log = gohelp.LogPrependSuffixKeys(log, "формат", "uint16")
 	_, err = Read3(log, ctx, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = binary.LittleEndian.Uint16(response[3:5])
@@ -76,7 +76,7 @@ func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader Resp
 }
 
 func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
-	logger = gohelp.LogWithKeys(logger, "формат", "bcd")
+	logger = gohelp.LogPrependSuffixKeys(logger, "формат", "bcd")
 	_, err = Read3(logger, ctx, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
@@ -90,7 +90,7 @@ func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader Resp
 
 func Write32(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
 
-	log = gohelp.LogWithKeys(log,
+	log = gohelp.LogPrependSuffixKeys(log,
 		keyModbus, "запись_в_регистр_32",
 		"команда", deviceCommandCode,
 		"аргумент", value,
