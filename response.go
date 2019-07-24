@@ -63,9 +63,10 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 	case context.Canceled:
 		err = merry.WithMessage(err, "прервано")
 	}
-
 	if err == nil {
-		log.Debug("answer")
+		if gohelp.GetEnvWithLog("COMM_LOG_ANSWERS") == "true" {
+			log.Debug("answer")
+		}
 	}
 	return response, err
 }

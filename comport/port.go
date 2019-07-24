@@ -143,7 +143,7 @@ func (p *Port) BytesToReadCount() (int, error) {
 }
 
 // OpenPort opens a serial port with the specified configuration
-func OpenPort(log *structlog.Logger, c *Config) (*Port, error) {
+func OpenPort(c *Config) (*Port, error) {
 	size, par, stop := c.Size, c.Parity, c.StopBits
 	if size == 0 {
 		size = DefaultSize
@@ -154,11 +154,11 @@ func OpenPort(log *structlog.Logger, c *Config) (*Port, error) {
 	if stop == 0 {
 		stop = Stop1
 	}
-	port, err := openPort(log, c.Name, c.Baud, size, par, stop, c.ReadTimeout)
+	port, err := openPort(c.Name, c.Baud, size, par, stop, c.ReadTimeout)
 	return port, merry.Wrap(err)
 }
 
-func OpenPortDebounce(log *structlog.Logger, config *Config, timeout time.Duration, ctx context.Context) (port *Port, err error) {
+func OpenPortDebounce(config *Config, timeout time.Duration, ctx context.Context) (port *Port, err error) {
 	ctx, _ = context.WithTimeout(ctx, timeout)
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -172,7 +172,7 @@ func OpenPortDebounce(log *structlog.Logger, config *Config, timeout time.Durati
 				}
 				return
 			default:
-				if port, err = OpenPort(log, config); err == nil {
+				if port, err = OpenPort(config); err == nil {
 					return
 				}
 			}
@@ -195,7 +195,7 @@ var (
 	nClearCommError uintptr
 )
 
-func openPort(log *structlog.Logger, name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (*Port, error) {
+func openPort(name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (*Port, error) {
 
 	if err := CheckPortNameIsValid(name); err != nil {
 		return nil, merry.Wrap(err)

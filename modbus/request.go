@@ -60,14 +60,6 @@ func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommand
 	return r
 }
 
-func NewSwitchGasOvenRequest(n byte) Request {
-	return Request{
-		Addr:     0x16,
-		ProtoCmd: 0x10,
-		Data:     []byte{0, 32, 0, 1, 2, 0, n},
-	}
-}
-
 func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
 	if err = x.checkResponse(b); err != nil {
 		return

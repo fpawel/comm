@@ -43,9 +43,9 @@ func (x *ReadWriter) ensureOpen(log *structlog.Logger, ctx context.Context) erro
 	var err error
 
 	if x.bounceTimeout == 0 {
-		x.port, err = OpenPort(log, &config)
+		x.port, err = OpenPort(&config)
 	} else {
-		x.port, err = OpenPortDebounce(log, &config, x.bounceTimeout, ctx)
+		x.port, err = OpenPortDebounce(&config, x.bounceTimeout, ctx)
 	}
 	if err != nil {
 		return merry.Append(err, config.Name)
