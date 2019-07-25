@@ -7,6 +7,8 @@ import (
 	"github.com/fpawel/gohelp"
 	"github.com/fpawel/gohelp/helpstr"
 	"github.com/powerman/structlog"
+	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -63,11 +65,7 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 	case context.Canceled:
 		err = merry.WithMessage(err, "прервано")
 	}
-	if err == nil {
-		if gohelp.GetEnvWithLog("COMM_LOG_ANSWERS") == "true" {
-			log.Debug("answer")
-		}
-	}
+	logAnswer(log, "answer")
 	return response, err
 }
 
@@ -240,3 +238,19 @@ func (x Config) ReadTimeout() time.Duration {
 func (x Config) ReadByteTimeout() time.Duration {
 	return time.Duration(x.ReadByteTimeoutMillis) * time.Millisecond
 }
+
+var (
+	logAnswer = func() func(log *structlog.Logger, msg interface{}, keyvals ...interface{}) {
+		const env = "COMM_LOG_ANSWERS"
+		var flag int32
+		return func(log *structlog.Logger, msg interface{}, keyvals ...interface{}) {
+			if os.Getenv(env) == "true" {
+				log.Debug(msg, keyvals...)
+			}
+			if atomic.LoadInt32(&flag) == 0 {
+				structlog.New().Warn("skip logging answers because COMM_LOG_ANSWERS!=true")
+				atomic.StoreInt32(&flag, 1)
+			}
+		}
+	}()
+)
