@@ -248,7 +248,7 @@ var (
 				log.Debug(msg, keyvals...)
 			}
 			if atomic.LoadInt32(&flag) == 0 {
-				structlog.New().Warn("skip logging answers because COMM_LOG_ANSWERS!=true")
+				structlog.New().Debug("skip logging answers because COMM_LOG_ANSWERS!=true")
 				atomic.StoreInt32(&flag, 1)
 			}
 		}
