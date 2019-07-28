@@ -52,11 +52,13 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 	response, strResult, attempt, err := respReader.getResponse(log, ctx)
 
 	log = gohelp.LogPrependSuffixKeys(log,
-		"response", fmt.Sprintf("% X", response),
 		"attempt", attempt+1,
 		LogKeyDuration, helpstr.FormatDuration(time.Since(t)))
 	if len(strResult) > 0 {
 		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
+	}
+	if len(response) > 0 {
+		log = gohelp.LogPrependSuffixKeys(log, "response", fmt.Sprintf("% X", response))
 	}
 
 	switch err {
@@ -65,7 +67,11 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 	case context.Canceled:
 		err = merry.WithMessage(err, "прервано")
 	}
-	logAnswer(log, "answer")
+	if err == nil {
+		logAnswer(log, "answer")
+	} else {
+		log.PrintErr(err)
+	}
 	return response, err
 }
 
@@ -80,14 +86,13 @@ type result struct {
 }
 
 func (x responseReader) getResponse(log *structlog.Logger, mainContext context.Context) ([]byte, string, int, error) {
+	log = gohelp.LogPrependSuffixKeys(log, "request", x.Bytes)
 
 	var lastError error
 
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
 
-		log = gohelp.LogPrependSuffixKeys(log,
-			"attempt", attempt+1,
-			"request", x.Bytes)
+		log := gohelp.LogPrependSuffixKeys(log, "attempt", attempt+1)
 
 		if err := x.write(log, mainContext); err != nil {
 			return nil, "", attempt, err
@@ -136,7 +141,6 @@ func (x responseReader) getResponse(log *structlog.Logger, mainContext context.C
 
 			default:
 				return nil, "", attempt, ctx.Err()
-
 			}
 		}
 	}
