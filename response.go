@@ -61,18 +61,23 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 		log = gohelp.LogPrependSuffixKeys(log, "response", fmt.Sprintf("% X", response))
 	}
 
-	switch err {
-	case context.DeadlineExceeded:
-		err = ErrProtocol.Here().WithMessage("нет ответа")
-	case context.Canceled:
-		err = merry.WithMessage(err, "прервано")
-	}
 	if err == nil {
 		logAnswer(log, "answer")
-	} else {
-		log.PrintErr(err)
+		return response, nil
 	}
-	return response, err
+
+	if merry.Is(err, context.Canceled) {
+		err = merry.WithMessage(err, "прервано")
+	} else if merry.Is(err, context.DeadlineExceeded) {
+		err = ErrProtocol.Here().WithMessage("нет ответа")
+	}
+
+	log.PrintErr(err)
+	return nil, merry.
+		Appendf(err, "запрорс=`% X`", request.Bytes).
+		Appendf("попытка=%d", attempt+1).
+		Appendf("длительность=%s", helpstr.FormatDuration(time.Since(t)))
+
 }
 
 type responseReader struct {

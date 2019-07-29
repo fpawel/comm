@@ -5,7 +5,6 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-
 func Ports() ([]string, error) {
 
 	root, err := registry.OpenKey(registry.LOCAL_MACHINE, serialCommKey, registry.QUERY_VALUE)
@@ -28,7 +27,6 @@ func Ports() ([]string, error) {
 	return ports, nil
 }
 
-
 func CheckPortNameIsValid(portName string) error {
 	if len(portName) == 0 {
 		return merry.New("не задано имя СОМ порта")
@@ -46,8 +44,7 @@ func CheckPortNameIsValid(portName string) error {
 			return nil
 		}
 	}
-	return merry.Errorf("СОМ порт %q не доступен: %v", portName, ports)
+	return merry.Errorf("СОМ порт %q не доступен", portName)
 }
 
 const serialCommKey = `hardware\devicemap\serialcomm`
-
