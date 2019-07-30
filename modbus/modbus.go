@@ -13,7 +13,10 @@ import (
 
 const keyModbus = "_modbus"
 
-func Read3(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, firstReg Var, regsCount uint16, parseResponse comm.ResponseParser) ([]byte, error) {
+func Read3(log *structlog.Logger, ctx context.Context,
+	responseReader ResponseReader, addr Addr,
+	firstReg Var, regsCount uint16,
+	parseResponse comm.ResponseParser) ([]byte, error) {
 
 	log = gohelp.LogPrependSuffixKeys(log,
 		keyModbus, "считывание",
@@ -27,7 +30,7 @@ func Read3(log *structlog.Logger, ctx context.Context, responseReader ResponseRe
 		Data:     append(uint16b(uint16(firstReg)), uint16b(regsCount)...),
 	}
 
-	return req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
+	b, err := req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		lenMustBe := int(regsCount)*2 + 5
 		if len(response) != lenMustBe {
 			return "", merry.Errorf("длина ответа %d не равна %d", len(response), lenMustBe)
@@ -37,6 +40,7 @@ func Read3(log *structlog.Logger, ctx context.Context, responseReader ResponseRe
 		}
 		return "", nil
 	})
+	return b, merry.Appendf(err, "регистр %d: %d регистров", firstReg, regsCount)
 }
 
 func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
@@ -51,7 +55,7 @@ func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader Respon
 				n := 3 + i*4
 				v, ok := ParseBCD6(response[n:])
 				if !ok {
-					return "", comm.ErrProtocol.Here().Appendf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
+					return "", comm.Err.Here().Appendf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
 				}
 				values = append(values, v)
 				if len(result) > 0 {
@@ -65,30 +69,34 @@ func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader Respon
 
 }
 
-func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (result uint16, err error) {
+func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (uint16, error) {
 	log = gohelp.LogPrependSuffixKeys(log, "формат", "uint16")
-	_, err = Read3(log, ctx, responseReader, addr, var3, 1,
+	var result uint16
+	_, err := Read3(log, ctx, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = binary.LittleEndian.Uint16(response[3:5])
 			return strconv.Itoa(int(result)), nil
 		})
-	return
+	return result, merry.Append(err, "запрос числа в uin16")
 }
 
-func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (result float64, err error) {
+func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
 	logger = gohelp.LogPrependSuffixKeys(logger, "формат", "bcd")
-	_, err = Read3(logger, ctx, responseReader, addr, var3, 2,
+	var result float64
+	_, err := Read3(logger, ctx, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
 			if result, ok = ParseBCD6(response[3:]); !ok {
-				return "", comm.ErrProtocol.Here().Appendf("не правильный код BCD % X", response[3:7])
+				return "", comm.Err.Here().Appendf("не правильный код BCD % X", response[3:7])
 			}
 			return fmt.Sprintf("%v", result), nil
 		})
-	return
+	return result, merry.Append(err, "запрос числа в BCD")
 }
 
-func Write32(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd, value float64) error {
+func Write32(log *structlog.Logger, ctx context.Context,
+	responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd,
+	deviceCommandCode DevCmd, value float64) error {
 
 	log = gohelp.LogPrependSuffixKeys(log,
 		keyModbus, "запись_в_регистр_32",
@@ -101,11 +109,12 @@ func Write32(log *structlog.Logger, ctx context.Context, responseReader Response
 	_, err := req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		for i := 2; i < 6; i++ {
 			if request[i] != response[i] {
-				return "", ErrProtocol.Here().
+				return "", Err.Here().
 					WithMessagef("ошибка формата: запрос[2:6]==[% X] != ответ[2:6]==[% X]", request[2:6], response[2:6])
 			}
 		}
 		return "OK", nil
 	})
-	return err
+	return merry.Appendf(err, "запись в 32-ой регистр команды uint16 %X с аргументом BCD %v",
+		deviceCommandCode, value)
 }

@@ -37,7 +37,7 @@ func (x Request) Bytes() (b []byte) {
 }
 
 func (x Request) GetResponse(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
-	return responseReader.GetResponse(logger, ctx, x.Bytes(), func(request, response []byte) (string, error) {
+	b, err := responseReader.GetResponse(logger, ctx, x.Bytes(), func(request, response []byte) (string, error) {
 		if err := x.checkResponse(response); err != nil {
 			return "", err
 		}
@@ -46,6 +46,8 @@ func (x Request) GetResponse(logger *structlog.Logger, ctx context.Context, resp
 		}
 		return "", nil
 	})
+	return b, merry.Appendf(err, "команда modbus %d: адрес %d: данные запроса `% X`",
+		x.ProtoCmd, x.Addr, x.Data)
 }
 
 func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
@@ -65,12 +67,12 @@ func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
 		return
 	}
 	if len(b) != 9 {
-		err = ErrProtocol.Here().WithMessagef("ожидалось 9 байт ответа, %d байт получено", len(b))
+		err = Err.Here().WithMessagef("ожидалось 9 байт ответа, %d байт получено", len(b))
 		return
 	}
 	var ok bool
 	if v, ok = ParseBCD6(b[3:]); !ok {
-		err = ErrProtocol.Here().WithMessagef("не правильный код BCD: [% X]", b[3:7])
+		err = Err.Here().WithMessagef("не правильный код BCD: [% X]", b[3:7])
 	}
 	return
 }
@@ -78,28 +80,28 @@ func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
 func (x Request) checkResponse(response []byte) error {
 
 	if len(response) == 0 {
-		return ErrProtocol.Here().WithMessage("нет ответа")
+		return Err.Here().WithMessage("нет ответа")
 	}
 
 	if len(response) < 4 {
-		return ErrProtocol.Here().WithMessage("длина ответа меньше 4")
+		return Err.Here().WithMessage("длина ответа меньше 4")
 	}
 
 	if h, l := CRC16(response); h != 0 || l != 0 {
-		return ErrProtocol.Here().WithMessage("CRC16 не ноль")
+		return Err.Here().WithMessage("CRC16 не ноль")
 	}
 	if response[0] != byte(x.Addr) {
-		return ErrProtocol.Here().WithMessage("несовпадение адресов запроса %d и ответа %d")
+		return Err.Here().WithMessage("несовпадение адресов запроса %d и ответа %d")
 	}
 
 	if len(response) == 5 && byte(x.ProtoCmd)|0x80 == response[1] {
-		return ErrProtocol.Here().WithMessagef("аппаратная ошибка %d", response[2])
+		return Err.Here().WithMessagef("аппаратная ошибка %d", response[2])
 	}
 	if response[1] != byte(x.ProtoCmd) {
-		return ErrProtocol.Here().WithMessage("несовпадение кодов команд запроса и ответа")
+		return Err.Here().WithMessage("несовпадение кодов команд запроса и ответа")
 	}
 
 	return nil
 }
 
-var ErrProtocol = merry.WithMessage(comm.ErrProtocol, "MODBUS failed")
+var Err = merry.WithMessage(comm.Err, "ошибка проткола modbus")

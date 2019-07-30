@@ -32,7 +32,7 @@ func (x *ReadWriter) Opened() bool {
 	return x.port != nil
 }
 
-func (x *ReadWriter) ensureOpen(log *structlog.Logger, ctx context.Context) error {
+func (x *ReadWriter) Open(log *structlog.Logger, ctx context.Context) error {
 	if x.port != nil {
 		return nil
 	}
@@ -41,16 +41,12 @@ func (x *ReadWriter) ensureOpen(log *structlog.Logger, ctx context.Context) erro
 		config.ReadTimeout = time.Millisecond
 	}
 	var err error
-
 	if x.bounceTimeout == 0 {
 		x.port, err = OpenPort(&config)
 	} else {
 		x.port, err = OpenPortDebounce(&config, x.bounceTimeout, ctx)
 	}
-	if err != nil {
-		return merry.Append(err, config.Name)
-	}
-	return nil
+	return err
 }
 
 func (x *ReadWriter) Close() error {
@@ -64,20 +60,21 @@ func (x *ReadWriter) Close() error {
 
 func (x *ReadWriter) logWrap(log *structlog.Logger) *structlog.Logger {
 	cfg := x.getConfigFunc()
-	return gohelp.LogPrependSuffixKeys(log, "port", fmt.Sprintf("%s,%d", cfg.Name, cfg.Baud))
+	return gohelp.LogPrependSuffixKeys(log, "comport", fmt.Sprintf("%s,%d", cfg.Name, cfg.Baud))
 }
 
 func (x *ReadWriter) GetResponse(log *structlog.Logger, ctx context.Context, requestBytes []byte, respParser comm.ResponseParser) ([]byte, error) {
-	return comm.GetResponse(log, ctx, x, comm.Request{
+	b, err := comm.GetResponse(log, ctx, x, comm.Request{
 		Config:         x.getCommConfigFunc(),
 		Bytes:          requestBytes,
 		ResponseParser: respParser,
 	})
+	return b, merry.Append(err, x.getConfigFunc().String())
 }
 
 func (x *ReadWriter) Write(log *structlog.Logger, ctx context.Context, buf []byte) (int, error) {
 	log = x.logWrap(log)
-	if err := x.ensureOpen(log, ctx); err != nil {
+	if err := x.Open(log, ctx); err != nil {
 		return 0, err
 	}
 	return x.port.Write(log, buf)
@@ -85,7 +82,7 @@ func (x *ReadWriter) Write(log *structlog.Logger, ctx context.Context, buf []byt
 
 func (x *ReadWriter) Read(log *structlog.Logger, ctx context.Context, buf []byte) (int, error) {
 	log = x.logWrap(log)
-	if err := x.ensureOpen(log, ctx); err != nil {
+	if err := x.Open(log, ctx); err != nil {
 		return 0, err
 	}
 	return x.port.Read(log, buf)

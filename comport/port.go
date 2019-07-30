@@ -2,6 +2,7 @@ package comport
 
 import (
 	"context"
+	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/powerman/structlog"
 	"os"
@@ -96,6 +97,10 @@ type structTimeouts struct {
 	ReadTotalTimeoutConstant    uint32
 	WriteTotalTimeoutMultiplier uint32
 	WriteTotalTimeoutConstant   uint32
+}
+
+func (c Config) String() string {
+	return fmt.Sprintf("%s,%d", c.Name, c.Baud)
 }
 
 func (p *Port) Close() error {
