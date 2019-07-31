@@ -46,7 +46,7 @@ func (x Request) GetResponse(logger *structlog.Logger, ctx context.Context, resp
 		}
 		return "", nil
 	})
-	return b, merry.Appendf(err, "команда modbus %d: адрес %d: данные запроса `% X`",
+	return b, merry.Appendf(err, "команда modbus %d: адрес %d: данные запроса % X",
 		x.ProtoCmd, x.Addr, x.Data)
 }
 
