@@ -42,30 +42,12 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 	if request.Config.MaxAttemptsRead < 1 {
 		request.Config.MaxAttemptsRead = 1
 	}
-
-	log = gohelp.LogPrependSuffixKeys(log, "request", fmt.Sprintf("% X", request.Bytes))
-
 	t := time.Now()
-
 	respReader := responseReader{Request: request, ReadWriter: readWriter}
-
-	response, strResult, attempt, err := respReader.getResponse(log, ctx)
-
-	log = gohelp.LogPrependSuffixKeys(log,
-		"attempt", attempt+1,
-		LogKeyDuration, myfmt.FormatDuration(time.Since(t)))
-	if len(strResult) > 0 {
-		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
-	}
-	if len(response) > 0 {
-		log = gohelp.LogPrependSuffixKeys(log, "response", fmt.Sprintf("% X", response))
-	}
-
+	response, _, attempt, err := respReader.getResponse(log, ctx)
 	if err == nil {
-		logAnswer(log, "answer")
 		return response, nil
 	}
-
 	if merry.Is(err, context.Canceled) {
 		err = merry.Append(err, "прервано")
 	} else if merry.Is(err, context.DeadlineExceeded) {
@@ -75,8 +57,9 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 		}
 	}
 	log.PrintErr(err, "stack", myfmt.FormatMerryStacktrace(err))
-	return nil, merry.
+	return response, merry.
 		Appendf(err, "запрорс % X", request.Bytes).
+		Appendf("ответ % X", response).
 		Appendf("попытка %d из %d", attempt, request.Config.MaxAttemptsRead).
 		Appendf("продолжительность %s", myfmt.FormatDuration(time.Since(t))).
 		Appendf("таймаут ответа %d мс", request.Config.ReadTimeoutMillis).
@@ -94,7 +77,7 @@ type result struct {
 }
 
 func (x responseReader) getResponse(log *structlog.Logger, mainContext context.Context) ([]byte, string, int, error) {
-	log = gohelp.LogPrependSuffixKeys(log, "request", x.Bytes)
+	log = gohelp.LogPrependSuffixKeys(log, "request", fmt.Sprintf("`% X`", x.Bytes))
 
 	var lastError error
 
@@ -119,13 +102,18 @@ func (x responseReader) getResponse(log *structlog.Logger, mainContext context.C
 
 		case r := <-c:
 
-			if r.err != nil {
-				return nil, "", attempt, r.err
-			}
-
+			log := log.New()
 			strResult := ""
-			if x.ResponseParser != nil {
+			if r.err == nil && x.ResponseParser != nil {
 				strResult, r.err = x.ResponseParser(x.Bytes, r.response)
+				if len(strResult) > 0 {
+					log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
+				}
+			}
+			logAnswer(log, "got answer", "response", fmt.Sprintf("`% X`", r.response))
+
+			if r.err != nil {
+				return r.response, "", attempt, r.err
 			}
 
 			if merry.Is(r.err, Err) {
@@ -258,6 +246,7 @@ var (
 		return func(log *structlog.Logger, msg interface{}, keyvals ...interface{}) {
 			if os.Getenv(env) == "true" {
 				log.Debug(msg, keyvals...)
+				return
 			}
 			if atomic.LoadInt32(&flag) == 0 {
 				structlog.New().Debug("skip logging answers because COMM_LOG_ANSWERS!=true")

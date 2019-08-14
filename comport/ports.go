@@ -44,7 +44,7 @@ func CheckPortNameIsValid(portName string) error {
 			return nil
 		}
 	}
-	return merry.Errorf("СОМ порт %q не доступен", portName)
+	return merry.Errorf("СОМ порт %q не доступен. Список доступных СОМ портов: %s", portName, ports)
 }
 
 const serialCommKey = `hardware\devicemap\serialcomm`
