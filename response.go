@@ -61,7 +61,7 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 	log = gohelp.LogPrependSuffixKeys(log, "duration", fmt.Sprintf("`%s`", durafmt.Parse(time.Since(t))))
 
 	if err == nil {
-		logAnswer(log.Debug, "ok")
+		logAnswer(log.Info, "ok")
 		return response, nil
 	}
 
