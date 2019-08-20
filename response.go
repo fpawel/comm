@@ -49,10 +49,15 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 
 	response, strResult, attempt, err := respReader.getResponse(
 		gohelp.LogAppendPrefixKeys(log, "request", fmt.Sprintf("`% X`", request.Bytes)), ctx)
-	log = gohelp.LogAppendPrefixKeys(log, "bytes", fmt.Sprintf("`% X --> % X`", request.Bytes, response))
-	if len(strResult) > 0 {
-		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
+	if len(response) > 0 {
+		log = gohelp.LogAppendPrefixKeys(log, "data", fmt.Sprintf("`% X --> % X`", request.Bytes, response))
+		if len(strResult) > 0 {
+			log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
+		}
+	} else {
+		gohelp.LogAppendPrefixKeys(log, "request", fmt.Sprintf("`% X`", request.Bytes))
 	}
+
 	log = gohelp.LogPrependSuffixKeys(log, "duration", fmt.Sprintf("`%s`", durafmt.Parse(time.Since(t))))
 
 	if err == nil {
@@ -260,7 +265,7 @@ var (
 				return
 			}
 			if atomic.LoadInt32(&flag) == 0 {
-				structlog.New().Debug("skip logging answers because COMM_LOG_ANSWERS!=true")
+				structlog.New().Warn("skip logging answers because COMM_LOG_ANSWERS!=true")
 				atomic.StoreInt32(&flag, 1)
 			}
 		}
