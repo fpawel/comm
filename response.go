@@ -6,6 +6,7 @@ import (
 	"github.com/ansel1/merry"
 	"github.com/fpawel/gohelp"
 	"github.com/fpawel/gohelp/myfmt"
+	"github.com/hako/durafmt"
 	"github.com/powerman/structlog"
 	"os"
 	"sync/atomic"
@@ -46,16 +47,14 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 
 	respReader := responseReader{Request: request, ReadWriter: readWriter}
 
-	log = gohelp.LogPrependSuffixKeys(log, "request", fmt.Sprintf("`% X`", request.Bytes))
-
-	response, strResult, attempt, err := respReader.getResponse(log, ctx)
-
-	log = gohelp.LogPrependSuffixKeys(log,
-		"response", fmt.Sprintf("`% X`", response),
-		"duration", myfmt.FormatDuration(time.Since(t)))
+	response, strResult, attempt, err := respReader.getResponse(
+		gohelp.LogAppendPrefixKeys(log, "request", fmt.Sprintf("`% X`", request.Bytes)), ctx)
+	log = gohelp.LogAppendPrefixKeys(log, "bytes", fmt.Sprintf("`% X --> % X`", request.Bytes, response))
 	if len(strResult) > 0 {
 		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
 	}
+	log = gohelp.LogPrependSuffixKeys(log, "duration", fmt.Sprintf("`%s`", durafmt.Parse(time.Since(t))))
+
 	if err == nil {
 		logAnswer(log.Debug, "ok")
 		return response, nil
