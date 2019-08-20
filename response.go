@@ -49,28 +49,14 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 
 	response, strResult, attempt, err := respReader.getResponse(
 		gohelp.LogAppendPrefixKeys(log, "request", fmt.Sprintf("`% X`", request.Bytes)), ctx)
-	if len(response) > 0 {
-		log = gohelp.LogAppendPrefixKeys(log, "data", fmt.Sprintf("`% X --> % X`", request.Bytes, response))
-		if len(strResult) > 0 {
-			log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
-		}
-	} else {
-		gohelp.LogAppendPrefixKeys(log, "request", fmt.Sprintf("`% X`", request.Bytes))
-	}
 
-	log = gohelp.LogPrependSuffixKeys(log, "duration", fmt.Sprintf("`%s`", durafmt.Parse(time.Since(t))))
+	if isLogAnswersEnabled(log) {
+		logAnswer(log, request.Bytes, response, strResult, attempt, time.Since(t), err)
+	}
 
 	if err == nil {
-		logAnswer(log.Info, "ok")
 		return response, nil
 	}
-
-	if !merry.Is(err, context.Canceled) {
-		log = gohelp.LogPrependSuffixKeys(log, "stack", myfmt.FormatMerryStacktrace(err))
-	}
-
-	logAnswer(log.PrintErr, err)
-
 	if merry.Is(err, context.Canceled) {
 		err = merry.Append(err, "прервано")
 	} else if merry.Is(err, context.DeadlineExceeded) {
@@ -86,6 +72,13 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 		Appendf("продолжительность %s", myfmt.FormatDuration(time.Since(t))).
 		Appendf("таймаут ответа %d мс", request.Config.ReadTimeoutMillis).
 		Appendf("таймаут байта %d мс", request.Config.ReadByteTimeoutMillis)
+}
+
+func WithLogAnswers(fun func() error) error {
+	v := atomic.LoadInt32(&enableLogAnswersInitAtomicFlag)
+	defer atomic.StoreInt32(&enableLogAnswersInitAtomicFlag, v)
+	atomic.StoreInt32(&enableLogAnswersInitAtomicFlag, 1)
+	return fun()
 }
 
 type responseReader struct {
@@ -255,19 +248,50 @@ func (x Config) ReadByteTimeout() time.Duration {
 
 type PrintfFunc = func(msg interface{}, keyvals ...interface{})
 
-var (
-	logAnswer = func() func(printfFunc PrintfFunc, msg interface{}, keyvals ...interface{}) {
+func isLogAnswersEnabled(log *structlog.Logger) bool {
+	flagValue := atomic.LoadInt32(&enableLogAnswersInitAtomicFlag)
+	switch flagValue {
+	case 0:
+		return false
+	case 1:
+		return true
+	default:
 		const env = "COMM_LOG_ANSWERS"
-		var flag int32
-		return func(printfFunc PrintfFunc, msg interface{}, keyvals ...interface{}) {
-			if os.Getenv(env) == "true" {
-				printfFunc(msg, keyvals...)
-				return
-			}
-			if atomic.LoadInt32(&flag) == 0 {
-				structlog.New().Warn("skip logging answers because COMM_LOG_ANSWERS!=true")
-				atomic.StoreInt32(&flag, 1)
-			}
+		v := os.Getenv(env)
+		if v != "true" {
+			log.Info("посылки не будут выводиться в консоль", env, v)
+			atomic.StoreInt32(&enableLogAnswersInitAtomicFlag, 0)
+			return false
 		}
-	}()
+		log.Info("посылки будут выводиться в консоль", env, v)
+		atomic.StoreInt32(&enableLogAnswersInitAtomicFlag, 1)
+		return true
+	}
+}
+
+func logAnswer(log *structlog.Logger, request, response []byte, strResult string, attempt int, duration time.Duration, err error) {
+
+	if len(strResult) > 0 {
+		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
+	}
+
+	log = gohelp.LogPrependSuffixKeys(log, "duration", fmt.Sprintf("`%s`", durafmt.Parse(duration)))
+
+	str := fmt.Sprintf("% X --> % X", request, response)
+	if len(response) == 0 {
+		str = fmt.Sprintf("% X", request)
+	}
+	logFunc := log.Info
+	if err != nil {
+		str = fmt.Sprintf("%s: %s", str, err)
+		logFunc = log.PrintErr
+		if !merry.Is(err, context.Canceled) {
+			log = gohelp.LogPrependSuffixKeys(log, "stack", myfmt.FormatMerryStacktrace(err))
+		}
+	}
+	logFunc(str)
+}
+
+var (
+	enableLogAnswersInitAtomicFlag int32 = -1
 )
