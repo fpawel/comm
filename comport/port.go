@@ -273,16 +273,16 @@ func (p *Port) write(buf []byte) (int, error) {
 	defer p.wl.Unlock()
 
 	if err := p.Flush(); err != nil {
-		return 0, merry.Wrap(err)
+		return 0, merry.Appendf(err, "attempt to write: % X", buf)
 	}
 
 	if err := resetEvent(p.wo.HEvent); err != nil {
-		return 0, merry.Wrap(err)
+		return 0, merry.Appendf(err, "attempt to write: % X", buf)
 	}
 	var n uint32
 	err := syscall.WriteFile(p.fd, buf, &n, p.wo)
 	if err != nil && err != syscall.ERROR_IO_PENDING {
-		return int(n), merry.Wrap(err)
+		return int(n), merry.Appendf(err, "attempt to write: % X", buf)
 	}
 	return getOverlappedResult(p.fd, p.wo)
 }
