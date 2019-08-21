@@ -11,7 +11,7 @@ import (
 	"strconv"
 )
 
-const keyModbus = "_modbus"
+const keyModbus = "modbus"
 
 func Read3(log *structlog.Logger, ctx context.Context,
 	responseReader ResponseReader, addr Addr,
@@ -19,9 +19,9 @@ func Read3(log *structlog.Logger, ctx context.Context,
 	parseResponse comm.ResponseParser) ([]byte, error) {
 
 	log = gohelp.LogPrependSuffixKeys(log,
-		keyModbus, "считывание",
-		"количество_регистров", regsCount,
-		"регистр", firstReg,
+		keyModbus, "read3",
+		"regs_count", regsCount,
+		"reg", firstReg,
 	)
 
 	req := Request{
@@ -45,7 +45,7 @@ func Read3(log *structlog.Logger, ctx context.Context,
 
 func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
 
-	log = gohelp.LogPrependSuffixKeys(log, "формат", "BCD", "количество_значений", count)
+	log = gohelp.LogPrependSuffixKeys(log, "format", "BCD", "values_count", count)
 
 	var values []float64
 	_, err := Read3(log, ctx, responseReader, addr, var3, uint16(count*2),
@@ -70,7 +70,7 @@ func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader Respon
 }
 
 func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (uint16, error) {
-	log = gohelp.LogPrependSuffixKeys(log, "формат", "uint16")
+	log = gohelp.LogPrependSuffixKeys(log, "format", "uint16")
 	var result uint16
 	_, err := Read3(log, ctx, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
@@ -81,7 +81,7 @@ func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader Resp
 }
 
 func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
-	logger = gohelp.LogPrependSuffixKeys(logger, "формат", "bcd")
+	logger = gohelp.LogPrependSuffixKeys(logger, "format", "bcd")
 	var result float64
 	_, err := Read3(logger, ctx, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
@@ -99,9 +99,9 @@ func Write32(log *structlog.Logger, ctx context.Context,
 	deviceCommandCode DevCmd, value float64) error {
 
 	log = gohelp.LogPrependSuffixKeys(log,
-		keyModbus, "запись_в_регистр_32",
-		"команда", deviceCommandCode,
-		"аргумент", value,
+		keyModbus, "write32",
+		"dev_cmd", fmt.Sprintf("%04X", deviceCommandCode),
+		"arg", value,
 	)
 
 	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)

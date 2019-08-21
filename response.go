@@ -275,11 +275,12 @@ func logAnswer(log *structlog.Logger, request, response []byte, strResult string
 		log = gohelp.LogPrependSuffixKeys(log, "result", strResult)
 	}
 
-	log = gohelp.LogPrependSuffixKeys(log, "duration", fmt.Sprintf("`%s`", durafmt.Parse(duration)))
-
 	str := fmt.Sprintf("% X --> % X", request, response)
 	if len(response) == 0 {
 		str = fmt.Sprintf("% X", request)
+	}
+	if duration != 0 {
+		str += " " + durafmt.Parse(duration).String()
 	}
 	logFunc := log.Info
 	if err != nil {

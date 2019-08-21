@@ -36,8 +36,8 @@ func (x Request) Bytes() (b []byte) {
 	return
 }
 
-func (x Request) GetResponse(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
-	b, err := responseReader.GetResponse(logger, ctx, x.Bytes(), func(request, response []byte) (string, error) {
+func (x Request) GetResponse(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
+	b, err := responseReader.GetResponse(log, ctx, x.Bytes(), func(request, response []byte) (string, error) {
 		if err := x.checkResponse(response); err != nil {
 			return "", err
 		}
