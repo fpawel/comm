@@ -11,17 +11,14 @@ import (
 	"strconv"
 )
 
-const keyModbus = "modbus"
-
 func Read3(log *structlog.Logger, ctx context.Context,
 	responseReader ResponseReader, addr Addr,
 	firstReg Var, regsCount uint16,
 	parseResponse comm.ResponseParser) ([]byte, error) {
 
 	log = gohelp.LogPrependSuffixKeys(log,
-		keyModbus, "read3",
-		"regs_count", regsCount,
-		"reg", firstReg,
+		"`число регистров`", regsCount,
+		"регистр", firstReg,
 	)
 
 	req := Request{
@@ -99,9 +96,8 @@ func Write32(log *structlog.Logger, ctx context.Context,
 	deviceCommandCode DevCmd, value float64) error {
 
 	log = gohelp.LogPrependSuffixKeys(log,
-		keyModbus, "write32",
-		"dev_cmd", fmt.Sprintf("%04X", deviceCommandCode),
-		"arg", value,
+		"`код команды прибора`", fmt.Sprintf("%04X", deviceCommandCode),
+		"`аргумент команды прибора`", value,
 	)
 
 	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)

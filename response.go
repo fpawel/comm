@@ -65,13 +65,19 @@ func GetResponse(log *structlog.Logger, ctx context.Context, readWriter ReadWrit
 			panic("unexpected")
 		}
 	}
-	return response, merry.
+	err = merry.
 		Appendf(err, "запрорс % X", request.Bytes).
-		Appendf("ответ % X", response).
 		Appendf("попытка %d из %d", attempt, request.Config.MaxAttemptsRead).
-		Appendf("продолжительность %s", myfmt.FormatDuration(time.Since(t))).
 		Appendf("таймаут ответа %d мс", request.Config.ReadTimeoutMillis).
 		Appendf("таймаут байта %d мс", request.Config.ReadByteTimeoutMillis)
+
+	if dur := time.Since(t); dur >= time.Second {
+		err = merry.Append(err, durafmt.Parse(dur).String())
+	}
+	if len(response) > 0 {
+		err = merry.Appendf(err, "ответ % X", response)
+	}
+	return response, err
 }
 
 func WithLogAnswers(fun func() error) error {
@@ -279,16 +285,19 @@ func logAnswer(log *structlog.Logger, request, response []byte, strResult string
 	if len(response) == 0 {
 		str = fmt.Sprintf("% X", request)
 	}
-	if duration != 0 {
-		str += " " + durafmt.Parse(duration).String()
+
+	if attempt > 0 {
+		log = gohelp.LogPrependSuffixKeys(log, "attempt", attempt)
 	}
+	log = gohelp.LogPrependSuffixKeys(log, "duration", durafmt.Parse(duration))
+
+	if err != nil && !merry.Is(err, context.Canceled) {
+		log = gohelp.LogPrependSuffixKeys(log, "stack", myfmt.FormatMerryStacktrace(err))
+	}
+
 	logFunc := log.Info
 	if err != nil {
-		str = fmt.Sprintf("%s: %s", str, err)
 		logFunc = log.PrintErr
-		if !merry.Is(err, context.Canceled) {
-			log = gohelp.LogPrependSuffixKeys(log, "stack", myfmt.FormatMerryStacktrace(err))
-		}
 	}
 	logFunc(str)
 }

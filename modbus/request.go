@@ -2,8 +2,10 @@ package modbus
 
 import (
 	"context"
+	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
+	"github.com/fpawel/gohelp"
 	"github.com/powerman/structlog"
 )
 
@@ -37,6 +39,10 @@ func (x Request) Bytes() (b []byte) {
 }
 
 func (x Request) GetResponse(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
+	log = gohelp.LogPrependSuffixKeys(log,
+		"адрес", fmt.Sprintf("$%X", x.Addr),
+		"команда", fmt.Sprintf("$%X", x.ProtoCmd),
+		"`данные команды`", fmt.Sprintf("`% X`", x.Data))
 	b, err := responseReader.GetResponse(log, ctx, x.Bytes(), func(request, response []byte) (string, error) {
 		if err := x.checkResponse(response); err != nil {
 			return "", err
@@ -46,8 +52,7 @@ func (x Request) GetResponse(log *structlog.Logger, ctx context.Context, respons
 		}
 		return "", nil
 	})
-	return b, merry.Appendf(err, "команда modbus %d: адрес %d: запрос `% X`: ответ `% X`",
-		x.ProtoCmd, x.Addr, x.Data, b)
+	return b, merry.Appendf(err, "команда $%X адрес $%X", x.ProtoCmd, x.Addr)
 }
 
 func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
