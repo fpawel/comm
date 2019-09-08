@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/ansel1/merry"
-	"github.com/powerman/structlog"
 	"os"
 	"strings"
 	"sync"
@@ -107,18 +106,18 @@ func (p *Port) Close() error {
 	return p.f.Close()
 }
 
-func (p *Port) Write(log *structlog.Logger, buf []byte) (int, error) {
+func (p *Port) Write(buf []byte) (int, error) {
 	n, err := p.write(buf)
 	if err != nil {
-		return n, log.Err(err, "written_count", n)
+		return n, merry.Appendf(err, "written count: %d", n)
 	}
 	return n, nil
 }
 
-func (p *Port) Read(log *structlog.Logger, buf []byte) (int, error) {
+func (p *Port) Read(buf []byte) (int, error) {
 	n, err := p.read(buf)
 	if err != nil {
-		return n, log.Err(err, "read_count", n)
+		return n, merry.Appendf(err, "read count: %d", n)
 	}
 	return n, nil
 }
@@ -142,7 +141,7 @@ func (p *Port) BytesToReadCount() (int, error) {
 		commStat CommStat
 	)
 	if err := p.ClearCommError(&errors, &commStat); err != nil {
-		return 0, merry.Append(err, "unable to get bytes to read count")
+		return 0, merry.Appendf(err, "unable to get bytes to read count")
 	}
 	return int(commStat.InQue), nil
 }
@@ -159,8 +158,7 @@ func OpenPort(c *Config) (*Port, error) {
 	if stop == 0 {
 		stop = Stop1
 	}
-	port, err := openPort(c.Name, c.Baud, size, par, stop, c.ReadTimeout)
-	return port, merry.Wrap(err)
+	return openPort(c.Name, c.Baud, size, par, stop, c.ReadTimeout)
 }
 
 func OpenPortDebounce(config *Config, timeout time.Duration, ctx context.Context) (port *Port, err error) {
@@ -201,23 +199,23 @@ var (
 )
 
 func openPort(name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (*Port, error) {
-
 	if err := CheckPortNameIsValid(name); err != nil {
-		return nil, merry.Wrap(err)
+		return nil, err
 	}
-
 	if len(name) > 0 && name[0] != '\\' {
 		name = "\\\\.\\" + name
 	}
-
-	h, err := syscall.CreateFile(syscall.StringToUTF16Ptr(name),
+	utf16ptrName, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		panic(err)
+	}
+	h, err := syscall.CreateFile(utf16ptrName,
 		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
 		0,
 		nil,
 		syscall.OPEN_EXISTING,
 		syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OVERLAPPED,
 		0)
-
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "the system cannot find the file specified") {
 			err = merry.New("нет СОМ порта с таким именем")
@@ -225,7 +223,7 @@ func openPort(name string, baud int, databits byte, parity Parity, stopbits Stop
 		if strings.Contains(strings.ToLower(err.Error()), "access is denied") {
 			err = merry.New("СОМ порт занят")
 		}
-		return nil, merry.Wrap(err)
+		return nil, err
 	}
 
 	f := os.NewFile(uintptr(h), name)
@@ -296,12 +294,12 @@ func (p *Port) read(buf []byte) (int, error) {
 	defer p.rl.Unlock()
 
 	if err := resetEvent(p.ro.HEvent); err != nil {
-		return 0, merry.Wrap(err)
+		return 0, err
 	}
 	var done uint32
 	err := syscall.ReadFile(p.fd, buf, &done, p.ro)
 	if err != nil && err != syscall.ERROR_IO_PENDING {
-		return int(done), merry.Wrap(err)
+		return int(done), err
 	}
 	return getOverlappedResult(p.fd, p.ro)
 }
@@ -345,7 +343,7 @@ func setCommState(h syscall.Handle, baud int, databits byte, parity Parity, stop
 
 	r, _, err := syscall.Syscall(nSetCommState, 2, uintptr(h), uintptr(unsafe.Pointer(&params)), 0)
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }
@@ -395,7 +393,7 @@ func setCommTimeouts(h syscall.Handle, readTimeout time.Duration) error {
 
 	r, _, err := syscall.Syscall(nSetCommTimeouts, 2, uintptr(h), uintptr(unsafe.Pointer(&timeouts)), 0)
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }
@@ -403,7 +401,7 @@ func setCommTimeouts(h syscall.Handle, readTimeout time.Duration) error {
 func setupComm(h syscall.Handle, in, out int) error {
 	r, _, err := syscall.Syscall(nSetupComm, 3, uintptr(h), uintptr(in), uintptr(out))
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }
@@ -412,7 +410,7 @@ func setCommMask(h syscall.Handle) error {
 	const EV_RXCHAR = 0x0001
 	r, _, err := syscall.Syscall(nSetCommMask, 2, uintptr(h), EV_RXCHAR, 0)
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }
@@ -420,7 +418,7 @@ func setCommMask(h syscall.Handle) error {
 func resetEvent(h syscall.Handle) error {
 	r, _, err := syscall.Syscall(nResetEvent, 1, uintptr(h), 0, 0)
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }
@@ -433,7 +431,7 @@ func purgeComm(h syscall.Handle) error {
 	r, _, err := syscall.Syscall(nPurgeComm, 2, uintptr(h),
 		PURGE_TXABORT|PURGE_RXABORT|PURGE_TXCLEAR|PURGE_RXCLEAR, 0)
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }
@@ -442,7 +440,7 @@ func newOverlapped() (*syscall.Overlapped, error) {
 	var overlapped syscall.Overlapped
 	r, _, err := syscall.Syscall6(nCreateEvent, 4, 0, 1, 0, 0, 0, 0)
 	if r == 0 {
-		return nil, merry.Wrap(err)
+		return nil, err
 	}
 	overlapped.HEvent = syscall.Handle(r)
 	return &overlapped, nil
@@ -455,7 +453,7 @@ func getOverlappedResult(h syscall.Handle, overlapped *syscall.Overlapped) (int,
 		uintptr(unsafe.Pointer(overlapped)),
 		uintptr(unsafe.Pointer(&n)), 1, 0, 0)
 	if r == 0 {
-		return n, merry.Wrap(err)
+		return n, err
 	}
 
 	return n, nil
@@ -467,7 +465,7 @@ func clearCommError(h syscall.Handle, errors *uint32, commStat *CommStat) error 
 		uintptr(unsafe.Pointer(errors)),
 		uintptr(unsafe.Pointer(commStat)), 0, 0, 0)
 	if r == 0 {
-		return merry.Wrap(err)
+		return err
 	}
 	return nil
 }

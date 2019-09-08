@@ -6,19 +6,35 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
-	"github.com/fpawel/gohelp"
 	"github.com/powerman/structlog"
 	"strconv"
 )
 
-func Read3(log *structlog.Logger, ctx context.Context,
+const (
+	LogKeyAddr         = "modbus_address"
+	LogKeyCmd          = "modbus_cmd"
+	LogKeyData         = "modbus_data"
+	LogKeyRegsCount    = "modbus_regs_count"
+	LogKeyFirstReg     = "modbus_first_register"
+	LogKeyDeviceCmd    = "modbus_device_comd"
+	LogKeyDeviceCmdArg = "modbus_device_cmd_arg"
+)
+
+func SetLogKeysFormat() {
+	structlog.DefaultLogger.SetKeysFormat(
+		map[string]string{
+			LogKeyData: " %[1]s=`% [2]X`",
+		})
+}
+
+func Read3(log comm.Logger, ctx context.Context,
 	responseReader ResponseReader, addr Addr,
 	firstReg Var, regsCount uint16,
 	parseResponse comm.ResponseParser) ([]byte, error) {
 
-	log = gohelp.LogPrependSuffixKeys(log,
-		"`число регистров`", regsCount,
-		"регистр", firstReg,
+	log = logPrependSuffixKeys(log,
+		LogKeyRegsCount, regsCount,
+		LogKeyFirstReg, firstReg,
 	)
 
 	req := Request{
@@ -40,10 +56,8 @@ func Read3(log *structlog.Logger, ctx context.Context,
 	return b, merry.Appendf(err, "регистр %d: %d регистров", firstReg, regsCount)
 }
 
-func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
-
-	log = gohelp.LogPrependSuffixKeys(log, "format", "BCD", "values_count", count)
-
+func Read3BCDs(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
+	//log = logPrependSuffixKeys(log, "format", "BCD", "values_count", count)
 	var values []float64
 	_, err := Read3(log, ctx, responseReader, addr, var3, uint16(count*2),
 		func(request, response []byte) (string, error) {
@@ -66,8 +80,8 @@ func Read3BCDs(log *structlog.Logger, ctx context.Context, responseReader Respon
 
 }
 
-func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (uint16, error) {
-	log = gohelp.LogPrependSuffixKeys(log, "format", "uint16")
+func Read3UInt16(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (uint16, error) {
+	//log = logPrependSuffixKeys(log, "format", "uint16")
 	var result uint16
 	_, err := Read3(log, ctx, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
@@ -77,10 +91,10 @@ func Read3UInt16(log *structlog.Logger, ctx context.Context, responseReader Resp
 	return result, merry.Append(err, "запрос числа в uin16")
 }
 
-func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
-	logger = gohelp.LogPrependSuffixKeys(logger, "format", "bcd")
+func Read3BCD(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
+	//log = logPrependSuffixKeys(log, "format", "bcd")
 	var result float64
-	_, err := Read3(logger, ctx, responseReader, addr, var3, 2,
+	_, err := Read3(log, ctx, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
 			if result, ok = ParseBCD6(response[3:]); !ok {
@@ -91,17 +105,14 @@ func Read3BCD(logger *structlog.Logger, ctx context.Context, responseReader Resp
 	return result, merry.Append(err, "запрос числа в BCD")
 }
 
-func Write32(log *structlog.Logger, ctx context.Context,
+func Write32(log comm.Logger, ctx context.Context,
 	responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd,
 	deviceCommandCode DevCmd, value float64) error {
-
-	log = gohelp.LogPrependSuffixKeys(log,
-		"`код команды прибора`", fmt.Sprintf("%04X", deviceCommandCode),
-		"`аргумент команды прибора`", value,
+	log = logPrependSuffixKeys(log,
+		LogKeyDeviceCmd, deviceCommandCode,
+		LogKeyDeviceCmdArg, value,
 	)
-
 	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)
-
 	_, err := req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		for i := 2; i < 6; i++ {
 			if request[i] != response[i] {

@@ -1,7 +1,8 @@
 package comport
 
 import (
-	"github.com/ansel1/merry"
+	"errors"
+	"fmt"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -29,22 +30,22 @@ func Ports() ([]string, error) {
 
 func CheckPortNameIsValid(portName string) error {
 	if len(portName) == 0 {
-		return merry.New("не задано имя СОМ порта")
+		return errors.New("не задано имя СОМ порта")
 	}
 	ports, err := Ports()
 	if err != nil {
-		return merry.Append(err, "не удалось получить список СОМ портов, представленных в системе")
+		return fmt.Errorf("не удалось получить список СОМ портов, представленных в системе: %w", err)
 	}
 
 	if len(ports) == 0 {
-		return merry.New("СОМ порты отсутствуют")
+		return errors.New("СОМ порты отсутствуют")
 	}
 	for _, s := range ports {
 		if portName == s {
 			return nil
 		}
 	}
-	return merry.Errorf("СОМ порт %q не доступен. Список доступных СОМ портов: %s", portName, ports)
+	return fmt.Errorf("СОМ порт %q не доступен. Список доступных СОМ портов: %s", portName, ports)
 }
 
 const serialCommKey = `hardware\devicemap\serialcomm`
