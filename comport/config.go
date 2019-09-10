@@ -1,7 +1,6 @@
 package comport
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -80,8 +79,4 @@ type structTimeouts struct {
 	ReadTotalTimeoutConstant    uint32
 	WriteTotalTimeoutMultiplier uint32
 	WriteTotalTimeoutConstant   uint32
-}
-
-func (c Config) String() string {
-	return fmt.Sprintf("%s,%d", c.Name, c.Baud)
 }

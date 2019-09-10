@@ -6,7 +6,6 @@ import (
 	"github.com/ansel1/merry"
 	"github.com/fpawel/gohelp"
 	"github.com/fpawel/gohelp/myfmt"
-	"github.com/hako/durafmt"
 	"github.com/powerman/structlog"
 	"io"
 	"sync"
@@ -43,15 +42,15 @@ var Err = merry.New("ошибка проткола последовательн�
 
 const (
 	LogKeyDeviceValue = "device_value"
+	LogKeyDuration    = "comm_duration"
+	LogKeyAttempt     = "comm_attempt"
 )
 
 func (x ResponseReader) GetResponse(request []byte, log Logger) ([]byte, error) {
 	if x.Config.MaxAttemptsRead < 1 {
 		x.Config.MaxAttemptsRead = 1
 	}
-	t := time.Now()
-
-	response, result, attempt, err := x.getResponse(request, log)
+	response, result, err := x.getResponse(request, log)
 	if err == nil {
 		return response, nil
 	}
@@ -63,20 +62,12 @@ func (x ResponseReader) GetResponse(request []byte, log Logger) ([]byte, error) 
 			panic("unexpected")
 		}
 	}
-	err = merry.
-		Appendf(err, "запрорс % X", request).
-		Appendf("попытка %d из %d", attempt, x.Config.MaxAttemptsRead).
-		Appendf("таймаут ответа %d мс", x.Config.ReadTimeoutMillis).
-		Appendf("таймаут байта %d мс", x.Config.ReadByteTimeoutMillis)
-
-	if dur := time.Since(t); dur >= time.Second {
-		err = merry.Append(err, durafmt.Parse(dur).String())
-	}
+	err = merry.Appendf(err, "запрорс=`% X`", request).Appendf("comm=%+v", x.Config)
 	if len(response) > 0 {
-		err = merry.Appendf(err, "ответ % X", response)
+		err = merry.Appendf(err, "ответ=`% X`", response)
 	}
 	if len(result) > 0 {
-		err = merry.Appendf(err, "%s", result)
+		err = merry.Appendf(err, "результат=%s", result)
 	}
 	return response, err
 }
@@ -86,49 +77,49 @@ type result struct {
 	err      error
 }
 
-func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string, int, error) {
+func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string, error) {
 	if x.Ctx == nil {
 		x.Ctx = context.Background()
 	}
 	var lastError error
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
 		if err := x.write(request); err != nil {
-			return nil, "", attempt, err
+			return nil, "", err
 		}
 		ctx, _ := context.WithTimeout(x.Ctx, x.Config.ReadTimeout())
 		c := make(chan result)
-
 		startWaitResponseMoment := time.Now()
-
 		go x.waitForResponse(ctx, c)
+
+		log := gohelp.LogPrependSuffixKeys(log,
+			LogKeyDuration, time.Since(startWaitResponseMoment),
+			LogKeyAttempt, attempt)
 
 		select {
 
 		case r := <-c:
-
 			strResult := ""
 			if r.err == nil && x.ResponseParser != nil {
 				strResult, r.err = x.ResponseParser(request, r.response)
 			}
-
-			logAnswer(log, request, r.response, strResult, time.Since(startWaitResponseMoment),
-				merry.Appendf(r.err, "attempt=%d", attempt))
-
+			if len(strResult) > 0 {
+				log = gohelp.LogPrependSuffixKeys(log, LogKeyDeviceValue, strResult)
+			}
+			logAnswer(log, request, r.response, r.err)
 			if merry.Is(r.err, Err) {
 				lastError = r.err
 				time.Sleep(x.Config.ReadByteTimeout())
 				continue
 			}
 			if r.err != nil {
-				return r.response, strResult, attempt, r.err
+				return r.response, strResult, r.err
 			}
 
-			return r.response, strResult, attempt, nil
+			return r.response, strResult, nil
 
 		case <-ctx.Done():
 
-			logAnswer(log, request, nil, "", time.Since(startWaitResponseMoment),
-				merry.Appendf(ctx.Err(), "attempt=%d", attempt))
+			logAnswer(log, request, nil, ctx.Err())
 
 			switch ctx.Err() {
 
@@ -137,11 +128,11 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 				continue
 
 			default:
-				return nil, "", attempt, ctx.Err()
+				return nil, "", ctx.Err()
 			}
 		}
 	}
-	return nil, "", x.Config.MaxAttemptsRead, lastError
+	return nil, "", lastError
 
 }
 
@@ -228,17 +219,15 @@ type PrintfFunc = func(msg interface{}, keyvals ...interface{})
 //	enableLog = enable
 //}
 
-func logAnswer(log Logger, request, response []byte, strResult string, duration time.Duration, err error) {
+func logAnswer(log Logger, request, response []byte, err error) {
 	if !isLogEnabled() {
 		return
 	}
-	str := fmt.Sprintf("% X --> % X %s", request, response, durafmt.Parse(duration))
+	str := fmt.Sprintf("% X --> % X", request, response)
 	if len(response) == 0 {
-		str = fmt.Sprintf("% X %s", request, durafmt.Parse(duration))
+		str = fmt.Sprintf("% X", request)
 	}
-	if len(strResult) > 0 {
-		log = gohelp.LogPrependSuffixKeys(log, LogKeyDeviceValue, strResult)
-	}
+
 	if err == nil {
 		log.Info(str)
 		return
