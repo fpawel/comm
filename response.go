@@ -213,11 +213,11 @@ func (x Config) ReadByteTimeout() time.Duration {
 
 type PrintfFunc = func(msg interface{}, keyvals ...interface{})
 
-//func SetEnableLog(enable bool){
-//	mu.Lock()
-//	defer mu.Unlock()
-//	enableLog = enable
-//}
+func SetEnableLog(enable bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	enableLog = enable
+}
 
 func logAnswer(log Logger, request, response []byte, err error) {
 	if !isLogEnabled() {
