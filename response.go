@@ -57,8 +57,8 @@ func (x ResponseReader) GetResponse(request []byte, log Logger) ([]byte, error) 
 	if merry.Is(err, context.Canceled) {
 		err = merry.Append(err, "прервано")
 	} else if merry.Is(err, context.DeadlineExceeded) {
-		err = merry.Append(err, "нет ответа").WithCause(Err)
-		if !merry.Is(err, Err) {
+		err = merry.WithMessage(err, "нет ответа").WithCause(Err).WithCause(context.DeadlineExceeded)
+		if !merry.Is(err, Err) || !merry.Is(err, context.DeadlineExceeded) {
 			panic("unexpected")
 		}
 	}
