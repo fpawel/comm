@@ -142,7 +142,7 @@ func Write32(log comm.Logger, responseReader ResponseReader, addr Addr, protocol
 		}
 		return "OK", nil
 	})
-	return merry.Appendf(err, "запись в 32-ой регистр команды uint16 %X с аргументом BCD %v",
+	return merry.Appendf(err, "запись регистр=32 команда=%d аргумент=%v",
 		deviceCommandCode, value)
 }
 
@@ -170,7 +170,7 @@ func (x Request) GetResponse(log comm.Logger, responseReader ResponseReader, par
 		}
 		return "", nil
 	})
-	return b, merry.Appendf(err, "команда=$%X адрес=$%X", x.ProtoCmd, x.Addr)
+	return b, merry.Appendf(err, "команда modbus %d, адрес modbus %d", x.ProtoCmd, x.Addr)
 }
 
 func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
