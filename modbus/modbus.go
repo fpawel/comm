@@ -37,7 +37,7 @@ const (
 	LogKeyData         = "modbus_data"
 	LogKeyRegsCount    = "modbus_regs_count"
 	LogKeyFirstReg     = "modbus_first_register"
-	LogKeyDeviceCmd    = "modbus_device_comd"
+	LogKeyDeviceCmd    = "modbus_device_cmd"
 	LogKeyDeviceCmdArg = "modbus_device_cmd_arg"
 )
 
@@ -170,7 +170,7 @@ func (x Request) GetResponse(log comm.Logger, responseReader ResponseReader, par
 		}
 		return "", nil
 	})
-	return b, merry.Appendf(err, "команда modbus %d, адрес modbus %d", x.ProtoCmd, x.Addr)
+	return b, merry.Appendf(err, "modbus адрес=%d команда=%d", x.ProtoCmd, x.Addr)
 }
 
 func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
