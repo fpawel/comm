@@ -36,6 +36,7 @@ type Config struct {
 	ReadTimeoutMillis     int `toml:"read_timeout" comment:"таймаут получения ответа, мс"`
 	ReadByteTimeoutMillis int `toml:"read_byte_timeout" comment:"таймаут окончания ответа, мс"`
 	MaxAttemptsRead       int `toml:"max_attempts_read" comment:"число попыток получения ответа"`
+	PauseMillis           int `toml:"pause" comment:"пауза перед опросом, мс"`
 }
 
 var Err = merry.New("ошибка проткола последовательной приёмопередачи")
@@ -81,7 +82,9 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 	if x.Ctx == nil {
 		x.Ctx = context.Background()
 	}
-	var lastError error
+	var (
+		lastResult result
+	)
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
 		if err := x.write(request); err != nil {
 			return nil, "", err
@@ -91,9 +94,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 		startWaitResponseMoment := time.Now()
 		go x.waitForResponse(ctx, c)
 
-		log := gohelp.LogPrependSuffixKeys(log,
-			LogKeyDuration, time.Since(startWaitResponseMoment),
-			LogKeyAttempt, attempt)
+		log := gohelp.LogPrependSuffixKeys(log, LogKeyAttempt, attempt)
 
 		select {
 
@@ -103,11 +104,13 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 				strResult, r.err = x.ResponseParser(request, r.response)
 			}
 			if len(strResult) > 0 {
-				log = gohelp.LogPrependSuffixKeys(log, LogKeyDeviceValue, strResult)
+				log = gohelp.LogPrependSuffixKeys(log,
+					LogKeyDeviceValue, strResult,
+					LogKeyDuration, time.Since(startWaitResponseMoment))
 			}
 			logAnswer(log, request, r.response, r.err)
 			if merry.Is(r.err, Err) {
-				lastError = r.err
+				lastResult = r
 				time.Sleep(x.Config.ReadByteTimeout())
 				continue
 			}
@@ -124,7 +127,10 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 			switch ctx.Err() {
 
 			case context.DeadlineExceeded:
-				lastError = ctx.Err()
+				lastResult = result{
+					response: nil,
+					err:      ctx.Err(),
+				}
 				continue
 
 			default:
@@ -132,11 +138,16 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 			}
 		}
 	}
-	return nil, "", lastError
+	return lastResult.response, "", lastResult.err
 
 }
 
 func (x ResponseReader) write(request []byte) error {
+
+	if x.Config.PauseMillis > 0 {
+		pause(x.Ctx.Done(), time.Duration(x.Config.PauseMillis)*time.Millisecond)
+	}
+
 	t := time.Now()
 	writtenCount, err := x.ReadWriter.Write(request)
 	for ; err == nil && writtenCount == 0 &&
@@ -254,3 +265,16 @@ var (
 	mu        sync.Mutex
 	enableLog = true
 )
+
+func pause(chDone <-chan struct{}, d time.Duration) {
+	timer := time.NewTimer(d)
+	for {
+		select {
+		case <-timer.C:
+			return
+		case <-chDone:
+			timer.Stop()
+			return
+		}
+	}
+}

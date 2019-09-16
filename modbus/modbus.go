@@ -170,7 +170,7 @@ func (x Request) GetResponse(log comm.Logger, responseReader ResponseReader, par
 		}
 		return "", nil
 	})
-	return b, merry.Appendf(err, "modbus адрес=%d команда=%d", x.ProtoCmd, x.Addr)
+	return b, merry.Appendf(err, "modbus адрес=%d команда=%d", x.Addr, x.ProtoCmd)
 }
 
 func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
@@ -218,7 +218,7 @@ func (x Request) checkResponse(response []byte) error {
 	}
 
 	if len(response) == 5 && byte(x.ProtoCmd)|0x80 == response[1] {
-		return Err.Here().Appendf("аппаратная ошибка %d", response[2])
+		return Err.Here().Appendf("код ошибки прибора %d", response[2]).WithUserMessagef("код ошибки прибора %d", response[2])
 	}
 	if response[1] != byte(x.ProtoCmd) {
 		return Err.Here().Append("несовпадение кодов команд запроса и ответа")
