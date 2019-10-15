@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
-	"github.com/fpawel/gohelp"
+	"github.com/fpawel/comm/internal"
 	"github.com/powerman/structlog"
 	"strconv"
 )
@@ -53,7 +53,7 @@ func Read3(log comm.Logger,
 	firstReg Var, regsCount uint16,
 	parseResponse comm.ResponseParser) ([]byte, error) {
 
-	log = logPrependSuffixKeys(log,
+	log = internal.LogPrependSuffixKeys(log,
 		LogKeyRegsCount, regsCount,
 		LogKeyFirstReg, firstReg,
 	)
@@ -128,7 +128,7 @@ func Read3BCD(log comm.Logger, responseReader ResponseReader, addr Addr, var3 Va
 
 func Write32(log comm.Logger, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd,
 	deviceCommandCode DevCmd, value float64) error {
-	log = logPrependSuffixKeys(log,
+	log = internal.LogPrependSuffixKeys(log,
 		LogKeyDeviceCmd, deviceCommandCode,
 		LogKeyDeviceCmdArg, value,
 	)
@@ -157,7 +157,7 @@ func (x Request) Bytes() (b []byte) {
 }
 
 func (x Request) GetResponse(log comm.Logger, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
-	log = logPrependSuffixKeys(log,
+	log = internal.LogPrependSuffixKeys(log,
 		LogKeyAddr, x.Addr,
 		LogKeyCmd, x.ProtoCmd,
 		LogKeyData, x.Data)
@@ -232,8 +232,4 @@ func uint16b(v uint16) (b []byte) {
 	b[0] = byte(v >> 8)
 	b[1] = byte(v)
 	return
-}
-
-func logPrependSuffixKeys(log comm.Logger, a ...interface{}) *structlog.Logger {
-	return gohelp.LogPrependSuffixKeys(log, a...)
 }

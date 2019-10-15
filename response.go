@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ansel1/merry"
-	"github.com/fpawel/gohelp"
-	"github.com/fpawel/gohelp/myfmt"
+	"github.com/fpawel/comm/internal"
 	"github.com/powerman/structlog"
 	"io"
 	"sync"
@@ -94,7 +93,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 		startWaitResponseMoment := time.Now()
 		go x.waitForResponse(ctx, c)
 
-		log := gohelp.LogPrependSuffixKeys(log, LogKeyAttempt, attempt)
+		log := internal.LogPrependSuffixKeys(log, LogKeyAttempt, attempt)
 
 		select {
 
@@ -104,7 +103,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 				strResult, r.err = x.ResponseParser(request, r.response)
 			}
 			if len(strResult) > 0 {
-				log = gohelp.LogPrependSuffixKeys(log,
+				log = internal.LogPrependSuffixKeys(log,
 					LogKeyDeviceValue, strResult,
 					LogKeyDuration, time.Since(startWaitResponseMoment))
 			}
@@ -248,7 +247,7 @@ func logAnswer(log Logger, request, response []byte, err error) {
 		return
 	}
 	str += ": " + err.Error()
-	stack := myfmt.FormatMerryStacktrace(err)
+	stack := internal.FormatMerryStacktrace(err)
 	if len(stack) > 0 {
 		str += stack
 	}

@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
+	"github.com/fpawel/comm/internal"
 	"github.com/fpawel/comm/modbus"
-	"github.com/fpawel/gohelp"
-	"github.com/powerman/structlog"
 	"time"
 )
 
@@ -81,11 +80,7 @@ type responseReader struct {
 
 func (x responseReader) GetResponse(request []byte, log comm.Logger, rp comm.ResponseParser) ([]byte, error) {
 	cfg := x.c()
-	log = logPrependSuffixKeys(log, "comport", fmt.Sprintf("%+v", cfg))
+	log = internal.LogPrependSuffixKeys(log, "comport", fmt.Sprintf("%+v", cfg))
 	b, err := comm.NewResponseReader(x.ctx, x.Port, x.cfg, rp).GetResponse(request, log)
 	return b, merry.Appendf(err, "comport=%+v", cfg)
-}
-
-func logPrependSuffixKeys(log *structlog.Logger, a ...interface{}) *structlog.Logger {
-	return gohelp.LogPrependSuffixKeys(log, a...)
 }
