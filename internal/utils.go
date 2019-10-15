@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/ansel1/merry"
-	"github.com/fpawel/comm"
 	"github.com/powerman/structlog"
 	"path/filepath"
 	"runtime"
 )
 
-func LogPrependSuffixKeys(log comm.Logger, args ...interface{}) *structlog.Logger {
+func LogPrependSuffixKeys(log *structlog.Logger, args ...interface{}) *structlog.Logger {
 	var keys []string
 	for i, arg := range args {
 		if i%2 == 0 {

@@ -17,7 +17,7 @@ func ParseBCD6(b []byte) (r float64, ok bool) {
 					sign = 1
 				}
 				r *= sign
-				r /= float64(math.Pow(10, coma))
+				r /= math.Pow(10, coma)
 				ok = true
 			}
 		}
