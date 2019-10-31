@@ -15,6 +15,10 @@ type Port struct {
 	p *winComport
 }
 
+func NewPort(c Config) *Port {
+	return &Port{c: c}
+}
+
 func (x *Port) NewResponseReader(ctx context.Context, cfg comm.Config) modbus.ResponseReader {
 	return responseReader{
 		Port: x,
