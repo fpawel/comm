@@ -32,10 +32,10 @@ type Logger = *structlog.Logger
 type ResponseParser = func(request, response []byte) (string, error)
 
 type Config struct {
-	ReadTimeoutMillis     int `toml:"read_timeout" comment:"таймаут получения ответа, мс"`
-	ReadByteTimeoutMillis int `toml:"read_byte_timeout" comment:"таймаут окончания ответа, мс"`
-	MaxAttemptsRead       int `toml:"max_attempts_read" comment:"число попыток получения ответа"`
-	PauseMillis           int `toml:"pause" comment:"пауза перед опросом, мс"`
+	ReadTimeoutMillis     int `json:"read_timeout_millis" toml:"read_timeout" comment:"таймаут получения ответа, мс"`
+	ReadByteTimeoutMillis int `json:"read_byte_timeout" toml:"read_byte_timeout" comment:"таймаут окончания ответа, мс"`
+	MaxAttemptsRead       int `json:"max_attempts_read" toml:"max_attempts_read" comment:"число попыток получения ответа"`
+	PauseMillis           int `json:"pause" toml:"pause" comment:"пауза перед опросом, мс"`
 }
 
 var Err = merry.New("ошибка проткола последовательной приёмопередачи")
