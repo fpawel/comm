@@ -11,14 +11,8 @@ import (
 )
 
 type Port struct {
-	c func() Config
+	c Config
 	p *winComport
-}
-
-func NewPort(getConfigFunc func() Config) *Port {
-	return &Port{
-		c: getConfigFunc,
-	}
 }
 
 func (x *Port) NewResponseReader(ctx context.Context, cfg comm.Config) modbus.ResponseReader {
@@ -29,6 +23,19 @@ func (x *Port) NewResponseReader(ctx context.Context, cfg comm.Config) modbus.Re
 	}
 }
 
+// Config возвращает параметры СОМ порта
+func (x *Port) Config() Config {
+	return x.c
+}
+
+// SetConfig устанавливае параметры СОМ порта
+func (x *Port) SetConfig(c Config) {
+	if c.ReadTimeout == 0 {
+		c.ReadTimeout = time.Millisecond
+	}
+	x.c = c
+}
+
 func (x *Port) Opened() bool {
 	return x.p != nil
 }
@@ -37,13 +44,17 @@ func (x *Port) Open() error {
 	if x.p != nil {
 		return nil
 	}
-	config := x.c()
-	if config.ReadTimeout == 0 {
-		config.ReadTimeout = time.Millisecond
+	c0 := Config{}
+	if x.c == c0 {
+		return merry.New("параметры СОМ порта не были заданы")
 	}
+
 	var err error
-	x.p, err = openWinComport(&config)
-	return err
+	x.p, err = openWinComport(&x.c)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (x *Port) Close() error {
@@ -79,8 +90,7 @@ type responseReader struct {
 }
 
 func (x responseReader) GetResponse(request []byte, log comm.Logger, rp comm.ResponseParser) ([]byte, error) {
-	cfg := x.c()
-	log = internal.LogPrependSuffixKeys(log, "comport", fmt.Sprintf("%+v", cfg))
+	log = internal.LogPrependSuffixKeys(log, "comport", fmt.Sprintf("%+v", x.c))
 	b, err := comm.NewResponseReader(x.ctx, x.Port, x.cfg, rp).GetResponse(request, log)
-	return b, merry.Appendf(err, "comport=%+v", cfg)
+	return b, merry.Appendf(err, "comport=%+v", x.c)
 }
