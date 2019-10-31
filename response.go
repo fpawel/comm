@@ -32,10 +32,10 @@ type Logger = *structlog.Logger
 type ResponseParser = func(request, response []byte) (string, error)
 
 type Config struct {
-	ReadTimeoutMillis     int `json:"read_timeout_millis"` // таймаут получения ответа, мс
-	ReadByteTimeoutMillis int `json:"read_byte_timeout"`   // таймаут окончания ответа, мс
-	MaxAttemptsRead       int `json:"max_attempts_read"`   //число попыток получения ответа
-	PauseMillis           int `json:"pause"`               //пауза перед опросом, мс
+	ReadTimeout     time.Duration `json:"read_timeout" yaml:"read_timeout"`           // таймаут получения ответа
+	ReadByteTimeout time.Duration `json:"read_byte_timeout" yaml:"read_byte_timeout"` // таймаут окончания ответа
+	MaxAttemptsRead int           `json:"max_attempts_read" yaml:"max_attempts_read"` //число попыток получения ответа
+	PauseMillis     int           `json:"pause" yaml:"pause"`                         //пауза перед опросом, мс
 }
 
 var Err = merry.New("ошибка проткола последовательной приёмопередачи")
@@ -88,7 +88,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 		if err := x.write(request); err != nil {
 			return nil, "", err
 		}
-		ctx, _ := context.WithTimeout(x.Ctx, x.Config.ReadTimeout())
+		ctx, _ := context.WithTimeout(x.Ctx, x.Config.ReadTimeout)
 		c := make(chan result)
 		startWaitResponseMoment := time.Now()
 		go x.waitForResponse(ctx, c)
@@ -110,7 +110,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 			logAnswer(log, request, r.response, r.err)
 			if merry.Is(r.err, Err) {
 				lastResult = r
-				time.Sleep(x.Config.ReadByteTimeout())
+				time.Sleep(x.Config.ReadByteTimeout)
 				continue
 			}
 			if r.err != nil {
@@ -150,9 +150,9 @@ func (x ResponseReader) write(request []byte) error {
 	t := time.Now()
 	writtenCount, err := x.ReadWriter.Write(request)
 	for ; err == nil && writtenCount == 0 &&
-		time.Since(t) < x.Config.ReadTimeout(); writtenCount, err = x.ReadWriter.Write(request) {
+		time.Since(t) < x.Config.ReadTimeout; writtenCount, err = x.ReadWriter.Write(request) {
 		// COMPORT PENDING
-		time.Sleep(x.Config.ReadByteTimeout())
+		time.Sleep(x.Config.ReadByteTimeout)
 	}
 	if err != nil {
 		return merry.Wrap(err)
@@ -195,7 +195,7 @@ func (x ResponseReader) waitForResponse(ctx context.Context, c chan result) {
 			}
 			response = append(response, b...)
 			ctx = context.Background()
-			ctxReady, _ = context.WithTimeout(context.Background(), x.Config.ReadByteTimeout())
+			ctxReady, _ = context.WithTimeout(context.Background(), x.Config.ReadByteTimeout)
 		}
 	}
 }
@@ -211,14 +211,6 @@ func (x ResponseReader) read(bytesToReadCount int) ([]byte, error) {
 		return nil, fmt.Errorf("считано %d байт из %d: % X", readCount, bytesToReadCount, b[:readCount])
 	}
 	return b, nil
-}
-
-func (x Config) ReadTimeout() time.Duration {
-	return time.Duration(x.ReadTimeoutMillis) * time.Millisecond
-}
-
-func (x Config) ReadByteTimeout() time.Duration {
-	return time.Duration(x.ReadByteTimeoutMillis) * time.Millisecond
 }
 
 type PrintfFunc = func(msg interface{}, keyvals ...interface{})
