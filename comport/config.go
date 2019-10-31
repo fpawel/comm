@@ -39,12 +39,12 @@ const (
 //    c1.ReadTimeout = time.Millisecond * 500
 //
 type Config struct {
-	Name        string        `json:"name" toml:"name" comment:"COM port name"`
-	Baud        int           `json:"baud" toml:"baud" comment:"baud rate"`
-	ReadTimeout time.Duration `json:"read_timeout" toml:"read_timeout" comment:"Total read timeout"`
-	Size        byte          `json:"size" toml:"size" comment:"The number of data bits. If 0, DefaultSize is used."`
-	Parity      Parity        `json:"parity" toml:"parity" comment:"The bit to use and defaults to ParityNone (no parity bit)."`
-	StopBits    StopBits      `json:"stop_bits" toml:"stop_bits" comment:"The number of stop bits to use. Default is 1 (1 stop bit)"`
+	Name        string        `json:"name"`         // COM port name
+	Baud        int           `json:"baud"`         // baud rate
+	ReadTimeout time.Duration `json:"read_timeout"` // Total read timeout
+	Size        byte          `json:"size"`         // The number of data bits. If 0, DefaultSize is used.
+	Parity      Parity        `json:"parity"`       // The bit to use and defaults to ParityNone (no parity bit).
+	StopBits    StopBits      `json:"stop_bits"`    // The number of stop bits to use. Default is 1 (1 stop bit)
 
 	// RTSFlowControl bool
 	// DTRFlowControl bool
