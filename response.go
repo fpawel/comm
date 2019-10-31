@@ -32,10 +32,10 @@ type Logger = *structlog.Logger
 type ResponseParser = func(request, response []byte) (string, error)
 
 type Config struct {
-	ReadTimeout     time.Duration `json:"read_timeout" yaml:"read_timeout"`           // таймаут получения ответа
-	ReadByteTimeout time.Duration `json:"read_byte_timeout" yaml:"read_byte_timeout"` // таймаут окончания ответа
-	MaxAttemptsRead int           `json:"max_attempts_read" yaml:"max_attempts_read"` //число попыток получения ответа
-	PauseMillis     int           `json:"pause" yaml:"pause"`                         //пауза перед опросом, мс
+	TimeoutGetResponse time.Duration `json:"timeout_get_response" yaml:"timeout_get_response"` // таймаут получения ответа
+	TimeoutEndResponse time.Duration `json:"timeout_end_response" yaml:"timeout_end_response"` // таймаут окончания ответа
+	MaxAttemptsRead    int           `json:"max_attempts_read" yaml:"max_attempts_read"`       //число попыток получения ответа
+	Pause              time.Duration `json:"pause" yaml:"pause"`                               //пауза перед опросом
 }
 
 var Err = merry.New("ошибка проткола последовательной приёмопередачи")
@@ -88,7 +88,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 		if err := x.write(request); err != nil {
 			return nil, "", err
 		}
-		ctx, _ := context.WithTimeout(x.Ctx, x.Config.ReadTimeout)
+		ctx, _ := context.WithTimeout(x.Ctx, x.Config.TimeoutGetResponse)
 		c := make(chan result)
 		startWaitResponseMoment := time.Now()
 		go x.waitForResponse(ctx, c)
@@ -110,7 +110,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 			logAnswer(log, request, r.response, r.err)
 			if merry.Is(r.err, Err) {
 				lastResult = r
-				time.Sleep(x.Config.ReadByteTimeout)
+				time.Sleep(x.Config.TimeoutEndResponse)
 				continue
 			}
 			if r.err != nil {
@@ -143,16 +143,16 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 
 func (x ResponseReader) write(request []byte) error {
 
-	if x.Config.PauseMillis > 0 {
-		pause(x.Ctx.Done(), time.Duration(x.Config.PauseMillis)*time.Millisecond)
+	if x.Config.Pause > 0 {
+		pause(x.Ctx.Done(), time.Duration(x.Config.Pause)*time.Millisecond)
 	}
 
 	t := time.Now()
 	writtenCount, err := x.ReadWriter.Write(request)
 	for ; err == nil && writtenCount == 0 &&
-		time.Since(t) < x.Config.ReadTimeout; writtenCount, err = x.ReadWriter.Write(request) {
+		time.Since(t) < x.Config.TimeoutGetResponse; writtenCount, err = x.ReadWriter.Write(request) {
 		// COMPORT PENDING
-		time.Sleep(x.Config.ReadByteTimeout)
+		time.Sleep(x.Config.TimeoutEndResponse)
 	}
 	if err != nil {
 		return merry.Wrap(err)
@@ -195,7 +195,7 @@ func (x ResponseReader) waitForResponse(ctx context.Context, c chan result) {
 			}
 			response = append(response, b...)
 			ctx = context.Background()
-			ctxReady, _ = context.WithTimeout(context.Background(), x.Config.ReadByteTimeout)
+			ctxReady, _ = context.WithTimeout(context.Background(), x.Config.TimeoutEndResponse)
 		}
 	}
 }

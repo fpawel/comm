@@ -31,12 +31,12 @@ const (
 //
 // For example:
 //
-//    c0 := &serial.Config{Name: "COM45", Baud: 115200, ReadTimeout: time.Millisecond * 500}
+//    c0 := &serial.Config{Name: "COM45", Baud: 115200, TimeoutGetResponse: time.Millisecond * 500}
 // or
 //    c1 := new(serial.Config)
 //    c1.Name = "/dev/tty.usbserial"
 //    c1.Baud = 115200
-//    c1.ReadTimeout = time.Millisecond * 500
+//    c1.TimeoutGetResponse = time.Millisecond * 500
 //
 type Config struct {
 	Name        string        `json:"name" yaml:"name"`                 // COM port name
