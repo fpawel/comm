@@ -33,11 +33,20 @@ func (x *Port) Config() Config {
 }
 
 // SetConfig устанавливае параметры СОМ порта
-func (x *Port) SetConfig(c Config) {
+func (x *Port) SetConfig(c Config) error {
 	if c.ReadTimeout == 0 {
 		c.ReadTimeout = time.Millisecond
 	}
+	if x.c == c {
+		return nil
+	}
+	if x.p != nil {
+		if err := x.Close(); err != nil {
+			return err
+		}
+	}
 	x.c = c
+	return nil
 }
 
 func (x *Port) Opened() bool {
