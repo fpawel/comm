@@ -144,7 +144,7 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 func (x ResponseReader) write(request []byte) error {
 
 	if x.Config.Pause > 0 {
-		pause(x.Ctx.Done(), time.Duration(x.Config.Pause)*time.Millisecond)
+		pause(x.Ctx.Done(), x.Config.Pause)
 	}
 
 	t := time.Now()
