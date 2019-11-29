@@ -48,6 +48,14 @@ func SetLogKeysFormat() {
 		})
 }
 
+func RequestRead3(addr Addr, firstRegister Var, registersCount uint16) Request {
+	return Request{
+		Addr:     addr,
+		ProtoCmd: 3,
+		Data:     append(uint16b(uint16(firstRegister)), uint16b(registersCount)...),
+	}
+}
+
 func Read3(log comm.Logger,
 	responseReader ResponseReader, addr Addr,
 	firstReg Var, regsCount uint16,
@@ -58,11 +66,7 @@ func Read3(log comm.Logger,
 		LogKeyFirstReg, firstReg,
 	)
 
-	req := Request{
-		Addr:     addr,
-		ProtoCmd: 3,
-		Data:     append(uint16b(uint16(firstReg)), uint16b(regsCount)...),
-	}
+	req := RequestRead3(addr, firstReg, regsCount)
 
 	b, err := req.GetResponse(log, responseReader, func(request, response []byte) (string, error) {
 		lenMustBe := int(regsCount)*2 + 5
