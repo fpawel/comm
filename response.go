@@ -60,7 +60,10 @@ func (x ResponseReader) GetResponse(log Logger, ctx context.Context, request []b
 			panic("unexpected")
 		}
 	}
-	err = merry.Appendf(err, "запрорс=`% X`", request).Appendf("comm=%+v", x.Config)
+	err = merry.Appendf(err, "запрорс=`% X`", request).
+		Appendf("timeout_get_response=%v", x.Config.TimeoutGetResponse).
+		Appendf("timeout_end_response=%v", x.Config.TimeoutEndResponse).
+		Appendf("max_attempts_read=%d", x.Config.MaxAttemptsRead)
 	if len(response) > 0 {
 		err = merry.Appendf(err, "ответ=`% X`", response)
 	}
