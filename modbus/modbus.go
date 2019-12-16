@@ -114,20 +114,6 @@ func Read3UInt16(log comm.Logger, ctx context.Context, responseReader ResponseRe
 	return result, merry.Append(err, "запрос числа в uin16")
 }
 
-//func Read3HEX(log comm.Logger, responseReader ResponseReader, addr Addr, var3 Var) (uint64, error) {
-//	//log = logPrependSuffixKeys(log, "format", "bcd")
-//	var result uint64
-//	_, err := Read3(log, responseReader, addr, var3, 2,
-//		func(request []byte, response []byte) (string, error) {
-//			result, n := binary.Uvarint(response[3:5])
-//			if n <= 0 {
-//				return fmt.Sprintf("% X", response), merry.Errorf("unexpected n=%d", n)
-//			}
-//			return fmt.Sprintf("[% X]=%v", response, result), nil
-//		})
-//	return result, merry.Append(err, "запрос числа в HEX")
-//}
-
 func Read3BCD(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
 	//log = logPrependSuffixKeys(log, "format", "bcd")
 	var result float64
