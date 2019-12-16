@@ -1,6 +1,7 @@
 package modbus
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/ansel1/merry"
@@ -24,10 +25,6 @@ type Request struct {
 type DevCmd uint16
 
 type Coefficient uint16
-
-type ResponseReader interface {
-	GetResponse([]byte, comm.Logger, comm.ResponseParser) ([]byte, error)
-}
 
 var Err = merry.Append(comm.Err, "ошибка проткола modbus")
 
@@ -57,6 +54,7 @@ func RequestRead3(addr Addr, firstRegister Var, registersCount uint16) Request {
 }
 
 func Read3(log comm.Logger,
+	ctx context.Context,
 	responseReader ResponseReader, addr Addr,
 	firstReg Var, regsCount uint16,
 	parseResponse comm.ResponseParser) ([]byte, error) {
@@ -68,7 +66,7 @@ func Read3(log comm.Logger,
 
 	req := RequestRead3(addr, firstReg, regsCount)
 
-	b, err := req.GetResponse(log, responseReader, func(request, response []byte) (string, error) {
+	b, err := req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		lenMustBe := int(regsCount)*2 + 5
 		if len(response) != lenMustBe {
 			return "", merry.Errorf("длина ответа %d не равна %d", len(response), lenMustBe)
@@ -81,10 +79,10 @@ func Read3(log comm.Logger,
 	return b, merry.Appendf(err, "регистр %d: %d регистров", firstReg, regsCount)
 }
 
-func Read3BCDs(log comm.Logger, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
+func Read3BCDs(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
 	//log = logPrependSuffixKeys(log, "format", "BCD", "values_count", count)
 	var values []float64
-	_, err := Read3(log, responseReader, addr, var3, uint16(count*2),
+	_, err := Read3(log, ctx, responseReader, addr, var3, uint16(count*2),
 		func(request, response []byte) (string, error) {
 			var result string
 			for i := 0; i < count; i++ {
@@ -105,10 +103,10 @@ func Read3BCDs(log comm.Logger, responseReader ResponseReader, addr Addr, var3 V
 
 }
 
-func Read3UInt16(log comm.Logger, responseReader ResponseReader, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
+func Read3UInt16(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
 	//log = logPrependSuffixKeys(log, "format", "uint16")
 	var result uint16
-	_, err := Read3(log, responseReader, addr, var3, 1,
+	_, err := Read3(log, ctx, responseReader, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = byteOrder.Uint16(response[3:5])
 			return strconv.Itoa(int(result)), nil
@@ -130,10 +128,10 @@ func Read3UInt16(log comm.Logger, responseReader ResponseReader, addr Addr, var3
 //	return result, merry.Append(err, "запрос числа в HEX")
 //}
 
-func Read3BCD(log comm.Logger, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
+func Read3BCD(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
 	//log = logPrependSuffixKeys(log, "format", "bcd")
 	var result float64
-	_, err := Read3(log, responseReader, addr, var3, 2,
+	_, err := Read3(log, ctx, responseReader, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
 			if result, ok = ParseBCD6(response[3:]); !ok {
@@ -144,14 +142,14 @@ func Read3BCD(log comm.Logger, responseReader ResponseReader, addr Addr, var3 Va
 	return result, merry.Append(err, "запрос числа в BCD")
 }
 
-func Write32(log comm.Logger, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd,
+func Write32(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd,
 	deviceCommandCode DevCmd, value float64) error {
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyDeviceCmd, deviceCommandCode,
 		LogKeyDeviceCmdArg, value,
 	)
 	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)
-	_, err := req.GetResponse(log, responseReader, func(request, response []byte) (string, error) {
+	_, err := req.GetResponse(log, ctx, responseReader, func(request, response []byte) (string, error) {
 		for i := 2; i < 6; i++ {
 			if request[i] != response[i] {
 				return "", merry.Appendf(Err.Here(),
@@ -174,12 +172,12 @@ func (x Request) Bytes() (b []byte) {
 	return
 }
 
-func (x Request) GetResponse(log comm.Logger, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
+func (x Request) GetResponse(log comm.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyAddr, x.Addr,
 		LogKeyCmd, x.ProtoCmd,
 		LogKeyData, x.Data)
-	b, err := responseReader.GetResponse(x.Bytes(), log, func(request, response []byte) (string, error) {
+	b, err := responseReader.GetResponse(log, ctx, x.Bytes(), func(request, response []byte) (string, error) {
 		if err := x.checkResponse(response); err != nil {
 			return "", err
 		}

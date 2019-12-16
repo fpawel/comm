@@ -1,12 +1,7 @@
 package comport
 
 import (
-	"context"
-	"fmt"
 	"github.com/ansel1/merry"
-	"github.com/fpawel/comm"
-	"github.com/fpawel/comm/internal"
-	"github.com/fpawel/comm/modbus"
 	"time"
 )
 
@@ -17,14 +12,6 @@ type Port struct {
 
 func NewPort(c Config) *Port {
 	return &Port{c: c}
-}
-
-func (x *Port) NewResponseReader(ctx context.Context, cfg comm.Config) modbus.ResponseReader {
-	return responseReader{
-		Port: x,
-		ctx:  ctx,
-		cfg:  cfg,
-	}
 }
 
 // Config возвращает параметры СОМ порта
@@ -94,16 +81,4 @@ func (x *Port) Read(buf []byte) (int, error) {
 		return x.p.BytesToReadCount()
 	}
 	return x.p.Read(buf)
-}
-
-type responseReader struct {
-	*Port
-	ctx context.Context
-	cfg comm.Config
-}
-
-func (x responseReader) GetResponse(request []byte, log comm.Logger, rp comm.ResponseParser) ([]byte, error) {
-	log = internal.LogPrependSuffixKeys(log, "comport", fmt.Sprintf("%+v", x.c))
-	b, err := comm.NewResponseReader(x.ctx, x.Port, x.cfg, rp).GetResponse(request, log)
-	return b, merry.Appendf(err, "comport=%+v", x.c)
 }

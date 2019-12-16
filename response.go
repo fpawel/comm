@@ -13,14 +13,12 @@ import (
 
 type ResponseReader struct {
 	ReadWriter     io.ReadWriter
-	Ctx            context.Context
 	Config         Config
 	ResponseParser ResponseParser
 }
 
-func NewResponseReader(ctx context.Context, readWriter io.ReadWriter, config Config, responseParser ResponseParser) ResponseReader {
+func NewResponseReader(readWriter io.ReadWriter, config Config, responseParser ResponseParser) ResponseReader {
 	return ResponseReader{
-		Ctx:            ctx,
 		ReadWriter:     readWriter,
 		Config:         config,
 		ResponseParser: responseParser,
@@ -46,11 +44,11 @@ const (
 	LogKeyAttempt     = "comm_attempt"
 )
 
-func (x ResponseReader) GetResponse(request []byte, log Logger) ([]byte, error) {
+func (x ResponseReader) GetResponse(log Logger, ctx context.Context, request []byte) ([]byte, error) {
 	if x.Config.MaxAttemptsRead < 1 {
 		x.Config.MaxAttemptsRead = 1
 	}
-	response, result, err := x.getResponse(request, log)
+	response, result, err := x.getResponse(log, ctx, request)
 	if err == nil {
 		return response, nil
 	}
@@ -77,18 +75,18 @@ type result struct {
 	err      error
 }
 
-func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string, error) {
-	if x.Ctx == nil {
-		x.Ctx = context.Background()
+func (x ResponseReader) getResponse(log Logger, ctx context.Context, request []byte) ([]byte, string, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	var (
 		lastResult result
 	)
 	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
-		if err := x.write(request); err != nil {
+		if err := x.write(ctx, request); err != nil {
 			return nil, "", err
 		}
-		ctx, _ := context.WithTimeout(x.Ctx, x.Config.TimeoutGetResponse)
+		ctx, _ := context.WithTimeout(ctx, x.Config.TimeoutGetResponse)
 		c := make(chan result)
 		startWaitResponseMoment := time.Now()
 		go x.waitForResponse(ctx, c)
@@ -141,10 +139,10 @@ func (x ResponseReader) getResponse(request []byte, log Logger) ([]byte, string,
 
 }
 
-func (x ResponseReader) write(request []byte) error {
+func (x ResponseReader) write(ctx context.Context, request []byte) error {
 
 	if x.Config.Pause > 0 {
-		pause(x.Ctx.Done(), x.Config.Pause)
+		pause(ctx.Done(), x.Config.Pause)
 	}
 
 	t := time.Now()
