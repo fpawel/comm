@@ -111,7 +111,7 @@ func (x ResponseReader) getResponse(log Logger, ctx context.Context, request []b
 			logAnswer(log, request, r.response, r.err)
 			if merry.Is(r.err, Err) {
 				lastResult = r
-				time.Sleep(x.Config.TimeoutEndResponse)
+				pause(ctx.Done(), x.Config.TimeoutEndResponse)
 				continue
 			}
 			if r.err != nil {
@@ -153,7 +153,7 @@ func (x ResponseReader) write(ctx context.Context, request []byte) error {
 	for ; err == nil && writtenCount == 0 &&
 		time.Since(t) < x.Config.TimeoutGetResponse; writtenCount, err = x.ReadWriter.Write(request) {
 		// COMPORT PENDING
-		time.Sleep(x.Config.TimeoutEndResponse)
+		pause(ctx.Done(), x.Config.TimeoutEndResponse)
 	}
 	if err != nil {
 		return merry.Wrap(err)
@@ -186,7 +186,7 @@ func (x ResponseReader) waitForResponse(ctx context.Context, c chan result) {
 				return
 			}
 			if bytesToReadCount == 0 {
-				time.Sleep(time.Millisecond)
+				pause(ctx.Done(), time.Millisecond)
 				continue
 			}
 			b, err := x.read(bytesToReadCount)
