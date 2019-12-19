@@ -1,19 +1,13 @@
 package comport
 
 import (
-	"context"
 	"github.com/ansel1/merry"
-	"github.com/fpawel/comm"
 	"time"
 )
 
 type Port struct {
 	c Config
 	p *winComport
-}
-
-type ResponseReader interface {
-	GetResponse(comm.Logger, context.Context, []byte) ([]byte, error)
 }
 
 func NewPort(c Config) *Port {
