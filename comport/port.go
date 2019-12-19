@@ -4,12 +4,21 @@ import (
 	"context"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
+	"github.com/powerman/structlog"
 	"time"
 )
 
 type Port struct {
 	c Config
 	p *winComport
+}
+
+type ResponseReader interface {
+	GetResponse(comm.Logger, context.Context, []byte) ([]byte, error)
+}
+
+type ResponseReadParser interface {
+	GetResponse(comm.Logger, context.Context, []byte, comm.ResponseParser) ([]byte, error)
 }
 
 func NewPort(c Config) *Port {
@@ -85,12 +94,21 @@ func (x *Port) Read(buf []byte) (int, error) {
 	return x.p.Read(buf)
 }
 
-func (x *Port) SimpleResponseReadParser(c comm.Config) ResponseReadParser {
+func (x *Port) ResponseReadParser(c comm.Config) ResponseReadParser {
 	return simpleResponseReadParser{p: x, c: c}
 }
 
-type ResponseReadParser interface {
-	GetResponse(comm.Logger, context.Context, []byte, comm.ResponseParser) ([]byte, error)
+func (x *Port) ResponseReader(c comm.Config) ResponseReader {
+	return simpleResponseReader{p: x, c: c}
+}
+
+type simpleResponseReader struct {
+	p *Port
+	c comm.Config
+}
+
+func (x simpleResponseReader) GetResponse(log *structlog.Logger, ctx context.Context, req []byte) ([]byte, error) {
+	return comm.GetResponse(log, ctx, x.c, x.p, nil, req)
 }
 
 type simpleResponseReadParser struct {
