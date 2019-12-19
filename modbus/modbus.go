@@ -28,6 +28,10 @@ type Coefficient uint16
 
 var Err = merry.Append(comm.Err, "ошибка проткола modbus")
 
+type ResponseReadParser interface {
+	GetResponse(comm.Logger, context.Context, []byte, comm.ResponseParser) ([]byte, error)
+}
+
 const (
 	LogKeyAddr         = "modbus_address"
 	LogKeyCmd          = "modbus_cmd"
@@ -55,7 +59,7 @@ func RequestRead3(addr Addr, firstRegister Var, registersCount uint16) Request {
 
 func Read3(log comm.Logger,
 	ctx context.Context,
-	responseReader ResponseReader, addr Addr,
+	responseReader ResponseReadParser, addr Addr,
 	firstReg Var, regsCount uint16,
 	parseResponse comm.ResponseParser) ([]byte, error) {
 
@@ -79,10 +83,10 @@ func Read3(log comm.Logger,
 	return b, merry.Appendf(err, "регистр %d: %d регистров", firstReg, regsCount)
 }
 
-func Read3BCDs(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, count int) ([]float64, error) {
+func Read3BCDs(log comm.Logger, ctx context.Context, rp ResponseReadParser, addr Addr, var3 Var, count int) ([]float64, error) {
 	//log = logPrependSuffixKeys(log, "format", "BCD", "values_count", count)
 	var values []float64
-	_, err := Read3(log, ctx, responseReader, addr, var3, uint16(count*2),
+	_, err := Read3(log, ctx, rp, addr, var3, uint16(count*2),
 		func(request, response []byte) (string, error) {
 			var result string
 			for i := 0; i < count; i++ {
@@ -103,10 +107,10 @@ func Read3BCDs(log comm.Logger, ctx context.Context, responseReader ResponseRead
 
 }
 
-func Read3UInt16(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
+func Read3UInt16(log comm.Logger, ctx context.Context, rp ResponseReadParser, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
 	//log = logPrependSuffixKeys(log, "format", "uint16")
 	var result uint16
-	_, err := Read3(log, ctx, responseReader, addr, var3, 1,
+	_, err := Read3(log, ctx, rp, addr, var3, 1,
 		func(_, response []byte) (string, error) {
 			result = byteOrder.Uint16(response[3:5])
 			return strconv.Itoa(int(result)), nil
@@ -114,10 +118,10 @@ func Read3UInt16(log comm.Logger, ctx context.Context, responseReader ResponseRe
 	return result, merry.Append(err, "запрос числа в uin16")
 }
 
-func Read3BCD(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, var3 Var) (float64, error) {
+func Read3BCD(log comm.Logger, ctx context.Context, rp ResponseReadParser, addr Addr, var3 Var) (float64, error) {
 	//log = logPrependSuffixKeys(log, "format", "bcd")
 	var result float64
-	_, err := Read3(log, ctx, responseReader, addr, var3, 2,
+	_, err := Read3(log, ctx, rp, addr, var3, 2,
 		func(request []byte, response []byte) (string, error) {
 			var ok bool
 			if result, ok = ParseBCD6(response[3:]); !ok {
@@ -128,7 +132,7 @@ func Read3BCD(log comm.Logger, ctx context.Context, responseReader ResponseReade
 	return result, merry.Append(err, "запрос числа в BCD")
 }
 
-func Write32(log comm.Logger, ctx context.Context, responseReader ResponseReader, addr Addr, protocolCommandCode ProtoCmd,
+func Write32(log comm.Logger, ctx context.Context, responseReader ResponseReadParser, addr Addr, protocolCommandCode ProtoCmd,
 	deviceCommandCode DevCmd, value float64) error {
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyDeviceCmd, deviceCommandCode,
@@ -158,17 +162,17 @@ func (x Request) Bytes() (b []byte) {
 	return
 }
 
-func (x Request) GetResponse(log comm.Logger, ctx context.Context, responseReader ResponseReader, parseResponse comm.ResponseParser) ([]byte, error) {
+func (x Request) GetResponse(log comm.Logger, ctx context.Context, rp ResponseReadParser, prs comm.ResponseParser) ([]byte, error) {
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyAddr, x.Addr,
 		LogKeyCmd, x.ProtoCmd,
 		LogKeyData, x.Data)
-	b, err := responseReader.GetResponse(log, ctx, x.Bytes(), func(request, response []byte) (string, error) {
+	b, err := rp.GetResponse(log, ctx, x.Bytes(), func(request, response []byte) (string, error) {
 		if err := x.checkResponse(response); err != nil {
 			return "", err
 		}
-		if parseResponse != nil {
-			return parseResponse(request, response)
+		if prs != nil {
+			return prs(request, response)
 		}
 		return "", nil
 	})

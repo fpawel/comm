@@ -11,20 +11,6 @@ import (
 	"time"
 )
 
-type ResponseReader struct {
-	ReadWriter     io.ReadWriter
-	Config         Config
-	ResponseParser ResponseParser
-}
-
-func NewResponseReader(readWriter io.ReadWriter, config Config, responseParser ResponseParser) ResponseReader {
-	return ResponseReader{
-		ReadWriter:     readWriter,
-		Config:         config,
-		ResponseParser: responseParser,
-	}
-}
-
 type Logger = *structlog.Logger
 
 type ResponseParser = func(request, response []byte) (string, error)
@@ -44,11 +30,17 @@ const (
 	LogKeyAttempt     = "comm_attempt"
 )
 
-func (x ResponseReader) GetResponse(log Logger, ctx context.Context, request []byte) ([]byte, error) {
-	if x.Config.MaxAttemptsRead < 1 {
-		x.Config.MaxAttemptsRead = 1
+func GetResponse(log Logger, ctx context.Context, cfg Config, rw io.ReadWriter, prs ResponseParser, request []byte) ([]byte, error) {
+	if cfg.MaxAttemptsRead < 1 {
+		cfg.MaxAttemptsRead = 1
 	}
-	response, result, err := x.getResponse(log, ctx, request)
+	x := helper{
+		rw:  rw,
+		cfg: cfg,
+		prs: prs,
+		req: request,
+	}
+	response, result, err := x.getResponse(log, ctx)
 	if err == nil {
 		return response, nil
 	}
@@ -61,9 +53,9 @@ func (x ResponseReader) GetResponse(log Logger, ctx context.Context, request []b
 		}
 	}
 	err = merry.Appendf(err, "запрорс=`% X`", request).
-		Appendf("timeout_get_response=%v", x.Config.TimeoutGetResponse).
-		Appendf("timeout_end_response=%v", x.Config.TimeoutEndResponse).
-		Appendf("max_attempts_read=%d", x.Config.MaxAttemptsRead)
+		Appendf("timeout_get_response=%v", cfg.TimeoutGetResponse).
+		Appendf("timeout_end_response=%v", cfg.TimeoutEndResponse).
+		Appendf("max_attempts_read=%d", cfg.MaxAttemptsRead)
 	if len(response) > 0 {
 		err = merry.Appendf(err, "ответ=`% X`", response)
 	}
@@ -73,23 +65,30 @@ func (x ResponseReader) GetResponse(log Logger, ctx context.Context, request []b
 	return response, err
 }
 
+type helper struct {
+	rw  io.ReadWriter
+	cfg Config
+	prs ResponseParser
+	req []byte
+}
+
 type result struct {
 	response []byte
 	err      error
 }
 
-func (x ResponseReader) getResponse(log Logger, ctx context.Context, request []byte) ([]byte, string, error) {
+func (x helper) getResponse(log Logger, ctx context.Context) ([]byte, string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	var (
 		lastResult result
 	)
-	for attempt := 0; attempt < x.Config.MaxAttemptsRead; attempt++ {
-		if err := x.write(ctx, request); err != nil {
+	for attempt := 0; attempt < x.cfg.MaxAttemptsRead; attempt++ {
+		if err := x.write(ctx, x.req); err != nil {
 			return nil, "", err
 		}
-		ctx, _ := context.WithTimeout(ctx, x.Config.TimeoutGetResponse)
+		ctx, _ := context.WithTimeout(ctx, x.cfg.TimeoutGetResponse)
 		c := make(chan result)
 		startWaitResponseMoment := time.Now()
 		go x.waitForResponse(ctx, c)
@@ -100,18 +99,18 @@ func (x ResponseReader) getResponse(log Logger, ctx context.Context, request []b
 
 		case r := <-c:
 			strResult := ""
-			if r.err == nil && x.ResponseParser != nil {
-				strResult, r.err = x.ResponseParser(request, r.response)
+			if r.err == nil && x.prs != nil {
+				strResult, r.err = x.prs(x.req, r.response)
 			}
 			if len(strResult) > 0 {
 				log = internal.LogPrependSuffixKeys(log,
 					LogKeyDeviceValue, strResult,
 					LogKeyDuration, time.Since(startWaitResponseMoment))
 			}
-			logAnswer(log, request, r.response, r.err)
+			x.logAnswer(log, r.response, r.err)
 			if merry.Is(r.err, Err) {
 				lastResult = r
-				pause(ctx.Done(), x.Config.TimeoutEndResponse)
+				pause(ctx.Done(), x.cfg.TimeoutEndResponse)
 				continue
 			}
 			if r.err != nil {
@@ -122,7 +121,7 @@ func (x ResponseReader) getResponse(log Logger, ctx context.Context, request []b
 
 		case <-ctx.Done():
 
-			logAnswer(log, request, nil, ctx.Err())
+			x.logAnswer(log, nil, ctx.Err())
 
 			switch ctx.Err() {
 
@@ -142,18 +141,18 @@ func (x ResponseReader) getResponse(log Logger, ctx context.Context, request []b
 
 }
 
-func (x ResponseReader) write(ctx context.Context, request []byte) error {
+func (x helper) write(ctx context.Context, request []byte) error {
 
-	if x.Config.Pause > 0 {
-		pause(ctx.Done(), x.Config.Pause)
+	if x.cfg.Pause > 0 {
+		pause(ctx.Done(), x.cfg.Pause)
 	}
 
 	t := time.Now()
-	writtenCount, err := x.ReadWriter.Write(request)
+	writtenCount, err := x.rw.Write(request)
 	for ; err == nil && writtenCount == 0 &&
-		time.Since(t) < x.Config.TimeoutGetResponse; writtenCount, err = x.ReadWriter.Write(request) {
+		time.Since(t) < x.cfg.TimeoutGetResponse; writtenCount, err = x.rw.Write(request) {
 		// COMPORT PENDING
-		pause(ctx.Done(), x.Config.TimeoutEndResponse)
+		pause(ctx.Done(), x.cfg.TimeoutEndResponse)
 	}
 	if err != nil {
 		return merry.Wrap(err)
@@ -164,7 +163,7 @@ func (x ResponseReader) write(ctx context.Context, request []byte) error {
 	return err
 }
 
-func (x ResponseReader) waitForResponse(ctx context.Context, c chan result) {
+func (x helper) waitForResponse(ctx context.Context, c chan result) {
 
 	var response []byte
 	ctxReady := context.Background()
@@ -180,7 +179,7 @@ func (x ResponseReader) waitForResponse(ctx context.Context, c chan result) {
 			return
 
 		default:
-			bytesToReadCount, err := x.ReadWriter.Read(nil)
+			bytesToReadCount, err := x.rw.Read(nil)
 			if err != nil {
 				c <- result{response, merry.Wrap(err)}
 				return
@@ -196,15 +195,15 @@ func (x ResponseReader) waitForResponse(ctx context.Context, c chan result) {
 			}
 			response = append(response, b...)
 			ctx = context.Background()
-			ctxReady, _ = context.WithTimeout(context.Background(), x.Config.TimeoutEndResponse)
+			ctxReady, _ = context.WithTimeout(context.Background(), x.cfg.TimeoutEndResponse)
 		}
 	}
 }
 
-func (x ResponseReader) read(bytesToReadCount int) ([]byte, error) {
+func (x helper) read(bytesToReadCount int) ([]byte, error) {
 
 	b := make([]byte, bytesToReadCount)
-	readCount, err := x.ReadWriter.Read(b)
+	readCount, err := x.rw.Read(b)
 	if err != nil {
 		return nil, merry.Wrap(err)
 	}
@@ -222,13 +221,13 @@ func SetEnableLog(enable bool) {
 	enableLog = enable
 }
 
-func logAnswer(log Logger, request, response []byte, err error) {
+func (x helper) logAnswer(log Logger, response []byte, err error) {
 	if !isLogEnabled() {
 		return
 	}
-	str := fmt.Sprintf("% X --> % X", request, response)
+	str := fmt.Sprintf("% X --> % X", x.req, response)
 	if len(response) == 0 {
-		str = fmt.Sprintf("% X", request)
+		str = fmt.Sprintf("% X", x.req)
 	}
 
 	if err == nil {

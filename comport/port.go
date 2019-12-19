@@ -1,7 +1,9 @@
 package comport
 
 import (
+	"context"
 	"github.com/ansel1/merry"
+	"github.com/fpawel/comm"
 	"time"
 )
 
@@ -81,4 +83,21 @@ func (x *Port) Read(buf []byte) (int, error) {
 		return x.p.BytesToReadCount()
 	}
 	return x.p.Read(buf)
+}
+
+func (x *Port) SimpleResponseReadParser(c comm.Config) ResponseReadParser {
+	return simpleResponseReadParser{p: x, c: c}
+}
+
+type ResponseReadParser interface {
+	GetResponse(comm.Logger, context.Context, []byte, comm.ResponseParser) ([]byte, error)
+}
+
+type simpleResponseReadParser struct {
+	p *Port
+	c comm.Config
+}
+
+func (x simpleResponseReadParser) GetResponse(log comm.Logger, ctx context.Context, request []byte, rp comm.ResponseParser) ([]byte, error) {
+	return comm.GetResponse(log, ctx, x.c, x.p, rp, request)
 }
