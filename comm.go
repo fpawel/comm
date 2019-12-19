@@ -13,7 +13,7 @@ import (
 
 type Logger = *structlog.Logger
 
-type ResponseParser = func(request, response []byte) (string, error)
+type ParseResponseFunc = func(request, response []byte) (string, error)
 
 type Config struct {
 	TimeoutGetResponse time.Duration `json:"timeout_get_response" yaml:"timeout_get_response"` // таймаут получения ответа
@@ -30,7 +30,7 @@ const (
 	LogKeyAttempt     = "comm_attempt"
 )
 
-func GetResponse(log Logger, ctx context.Context, cfg Config, rw io.ReadWriter, prs ResponseParser, request []byte) ([]byte, error) {
+func GetResponse(log Logger, ctx context.Context, cfg Config, rw io.ReadWriter, request []byte, prs ParseResponseFunc) ([]byte, error) {
 	if cfg.MaxAttemptsRead < 1 {
 		cfg.MaxAttemptsRead = 1
 	}
@@ -68,7 +68,7 @@ func GetResponse(log Logger, ctx context.Context, cfg Config, rw io.ReadWriter, 
 type helper struct {
 	rw  io.ReadWriter
 	cfg Config
-	prs ResponseParser
+	prs ParseResponseFunc
 	req []byte
 }
 
@@ -212,8 +212,6 @@ func (x helper) read(bytesToReadCount int) ([]byte, error) {
 	}
 	return b, nil
 }
-
-type PrintfFunc = func(msg interface{}, keyvals ...interface{})
 
 func SetEnableLog(enable bool) {
 	mu.Lock()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
-	"github.com/powerman/structlog"
 	"time"
 )
 
@@ -15,10 +14,6 @@ type Port struct {
 
 type ResponseReader interface {
 	GetResponse(comm.Logger, context.Context, []byte) ([]byte, error)
-}
-
-type ResponseReadParser interface {
-	GetResponse(comm.Logger, context.Context, []byte, comm.ResponseParser) ([]byte, error)
 }
 
 func NewPort(c Config) *Port {
@@ -92,30 +87,4 @@ func (x *Port) Read(buf []byte) (int, error) {
 		return x.p.BytesToReadCount()
 	}
 	return x.p.Read(buf)
-}
-
-func (x *Port) ResponseReadParser(c comm.Config) ResponseReadParser {
-	return simpleResponseReadParser{p: x, c: c}
-}
-
-func (x *Port) ResponseReader(c comm.Config) ResponseReader {
-	return simpleResponseReader{p: x, c: c}
-}
-
-type simpleResponseReader struct {
-	p *Port
-	c comm.Config
-}
-
-func (x simpleResponseReader) GetResponse(log *structlog.Logger, ctx context.Context, req []byte) ([]byte, error) {
-	return comm.GetResponse(log, ctx, x.c, x.p, nil, req)
-}
-
-type simpleResponseReadParser struct {
-	p *Port
-	c comm.Config
-}
-
-func (x simpleResponseReadParser) GetResponse(log comm.Logger, ctx context.Context, request []byte, rp comm.ResponseParser) ([]byte, error) {
-	return comm.GetResponse(log, ctx, x.c, x.p, rp, request)
 }
