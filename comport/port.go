@@ -2,6 +2,7 @@ package comport
 
 import (
 	"github.com/ansel1/merry"
+	"github.com/powerman/structlog"
 	"time"
 )
 
@@ -20,20 +21,17 @@ func (x *Port) Config() Config {
 }
 
 // SetConfig устанавливае параметры СОМ порта
-func (x *Port) SetConfig(c Config) error {
+func (x *Port) SetConfig(log *structlog.Logger, c Config) {
 	if c.ReadTimeout == 0 {
 		c.ReadTimeout = time.Millisecond
 	}
 	if x.c == c {
-		return nil
+		return
 	}
 	if x.p != nil {
-		if err := x.Close(); err != nil {
-			return err
-		}
+		log.ErrIfFail(x.Close, "close_comport", x.c.Name)
 	}
 	x.c = c
-	return nil
 }
 
 func (x *Port) Opened() bool {
