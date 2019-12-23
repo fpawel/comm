@@ -18,7 +18,12 @@ func (x RequestRead3) Request() Request {
 	return Request{
 		Addr:     x.Addr,
 		ProtoCmd: 3,
-		Data:     append(uint16b(uint16(x.FirstRegister)), uint16b(x.RegistersCount)...),
+		Data: []byte{
+			byte(x.FirstRegister >> 8),
+			byte(x.FirstRegister),
+			byte(x.RegistersCount >> 8),
+			byte(x.RegistersCount),
+		},
 	}
 }
 
@@ -38,7 +43,7 @@ func (x RequestRead3) GetResponse(log comm.Logger, ctx context.Context, cm comm.
 	return b, merry.Appendf(err, "регистр %d: %d регистров", x.FirstRegister, x.RegistersCount)
 }
 
-func Read3BCDValues(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int, format FloatBitsFormat) ([]float64, error) {
+func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int, format FloatBitsFormat) ([]float64, error) {
 	var values []float64
 	response, err := RequestRead3{
 		Addr:           addr,
