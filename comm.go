@@ -18,11 +18,11 @@ type ParseResponseFunc = func(request, response []byte) error
 type NotifyFunc = func(Info)
 
 type Info struct {
-	Request    []byte
-	Response   []byte
-	Err        error
-	Duration   time.Duration
-	ReadWriter io.ReadWriter
+	Request  []byte
+	Response []byte
+	Err      error
+	Duration time.Duration
+	Port     string
 }
 
 type Config struct {
@@ -306,11 +306,13 @@ func notify(startWaitResponseMoment time.Time, req []byte, r result, rw io.ReadW
 		return
 	}
 	i := Info{
-		Request:    make([]byte, len(req)),
-		Response:   make([]byte, len(r.response)),
-		Err:        r.err,
-		Duration:   time.Since(startWaitResponseMoment),
-		ReadWriter: rw,
+		Request:  make([]byte, len(req)),
+		Response: make([]byte, len(r.response)),
+		Err:      r.err,
+		Duration: time.Since(startWaitResponseMoment),
+	}
+	if s, f := rw.(fmt.Stringer); f {
+		i.Port = s.String()
 	}
 	copy(i.Request, req)
 	copy(i.Response, r.response)
