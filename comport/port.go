@@ -80,3 +80,7 @@ func (x *Port) Read(buf []byte) (int, error) {
 	}
 	return x.p.Read(buf)
 }
+
+func (x *Port) String() string {
+	return x.c.Name
+}
