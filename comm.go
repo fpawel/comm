@@ -66,9 +66,10 @@ func (x T) WithConfig(cfg Config) T {
 }
 
 func (x T) WithAppendParse(prs ParseResponseFunc) T {
+	xPrs := x.prs
 	x.prs = func(request, response []byte) error {
-		if x.prs != nil {
-			if err := x.prs(request, response); err != nil {
+		if xPrs != nil {
+			if err := xPrs(request, response); err != nil {
 				return err
 			}
 		}
@@ -81,12 +82,13 @@ func (x T) WithAppendParse(prs ParseResponseFunc) T {
 }
 
 func (x T) WithPrependParse(prs ParseResponseFunc) T {
+	xPrs := x.prs
 	x.prs = func(request, response []byte) error {
 		if err := prs(request, response); err != nil {
 			return err
 		}
-		if x.prs != nil {
-			if err := x.prs(request, response); err != nil {
+		if xPrs != nil {
+			if err := xPrs(request, response); err != nil {
 				return err
 			}
 		}
