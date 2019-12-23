@@ -23,6 +23,7 @@ type Info struct {
 	Err      error
 	Duration time.Duration
 	Port     string
+	Attempt  int
 }
 
 type Config struct {
@@ -164,7 +165,7 @@ func (x T) getResponse(log Logger, ctx context.Context, request []byte) ([]byte,
 			}
 			log = internal.LogPrependSuffixKeys(log, LogKeyDuration, time.Since(startWaitResponseMoment))
 			logAnswer(log, request, r)
-			notify(startWaitResponseMoment, request, r, x.rw)
+			notify(startWaitResponseMoment, request, r, x.rw, attempt)
 
 			if merry.Is(r.err, Err) {
 				lastResult = r
@@ -184,7 +185,7 @@ func (x T) getResponse(log Logger, ctx context.Context, request []byte) ([]byte,
 			}
 
 			logAnswer(log, request, r)
-			notify(startWaitResponseMoment, request, r, x.rw)
+			notify(startWaitResponseMoment, request, r, x.rw, attempt)
 
 			switch ctx.Err() {
 
@@ -301,7 +302,7 @@ func isLogEnabled() bool {
 	return atomic.LoadInt32(&atomicEnableLog) != 0
 }
 
-func notify(startWaitResponseMoment time.Time, req []byte, r result, rw io.ReadWriter) {
+func notify(startWaitResponseMoment time.Time, req []byte, r result, rw io.ReadWriter, attempt int) {
 	ntf := getNotifyFunc()
 	if ntf == nil {
 		return
@@ -311,6 +312,7 @@ func notify(startWaitResponseMoment time.Time, req []byte, r result, rw io.ReadW
 		Response: make([]byte, len(r.response)),
 		Err:      r.err,
 		Duration: time.Since(startWaitResponseMoment),
+		Attempt:  attempt,
 	}
 	if s, f := rw.(fmt.Stringer); f {
 		i.Port = s.String()
