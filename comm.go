@@ -178,19 +178,18 @@ func (x T) getResponse(log Logger, ctx context.Context, request []byte) ([]byte,
 			return r.response, nil
 
 		case <-ctx.Done():
-
-			logAnswer(log, request, result{
+			r := result{
 				response: nil,
 				err:      ctx.Err(),
-			})
+			}
+
+			logAnswer(log, request, r)
+			notify(startWaitResponseMoment, request, r, x.rw)
 
 			switch ctx.Err() {
 
 			case context.DeadlineExceeded:
-				lastResult = result{
-					response: nil,
-					err:      ctx.Err(),
-				}
+				lastResult = r
 				continue
 
 			default:
