@@ -7,13 +7,23 @@ import (
 	"github.com/fpawel/comm/internal"
 	"github.com/powerman/structlog"
 	"io"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Logger = *structlog.Logger
 
-type ParseResponseFunc = func(request, response []byte) (string, error)
+type ParseResponseFunc = func(request, response []byte) error
+
+type NotifyFunc = func(Info)
+
+type Info struct {
+	Request    []byte
+	Response   []byte
+	Err        error
+	Duration   time.Duration
+	ReadWriter io.ReadWriter
+}
 
 type Config struct {
 	TimeoutGetResponse time.Duration `json:"timeout_get_response" yaml:"timeout_get_response"` // таймаут получения ответа
@@ -25,22 +35,69 @@ type Config struct {
 var Err = merry.New("ошибка проткола последовательной приёмопередачи")
 
 const (
-	LogKeyDeviceValue = "device_value"
-	LogKeyDuration    = "comm_duration"
-	LogKeyAttempt     = "comm_attempt"
+	LogKeyDuration = "comm_duration"
+	LogKeyAttempt  = "comm_attempt"
 )
 
-func GetResponse(log Logger, ctx context.Context, cfg Config, rw io.ReadWriter, request []byte, prs ParseResponseFunc) ([]byte, error) {
+type T struct {
+	cfg Config
+	rw  io.ReadWriter
+	prs ParseResponseFunc
+}
+
+func New(rw io.ReadWriter, cfg Config) T {
 	if cfg.MaxAttemptsRead < 1 {
 		cfg.MaxAttemptsRead = 1
 	}
-	x := helper{
-		rw:  rw,
+	return T{
 		cfg: cfg,
-		prs: prs,
-		req: request,
+		rw:  rw,
 	}
-	response, result, err := x.getResponse(log, ctx)
+}
+
+func (x T) WithReadWriter(rw io.ReadWriter) T {
+	x.rw = rw
+	return x
+}
+
+func (x T) WithConfig(cfg Config) T {
+	x.cfg = cfg
+	return x
+}
+
+func (x T) WithAppendParse(prs ParseResponseFunc) T {
+	x.prs = func(request, response []byte) error {
+		if x.prs != nil {
+			if err := x.prs(request, response); err != nil {
+				return err
+			}
+		}
+		if err := prs(request, response); err != nil {
+			return err
+		}
+		return nil
+	}
+	return x
+}
+
+func (x T) WithPrependParse(prs ParseResponseFunc) T {
+	x.prs = func(request, response []byte) error {
+		if err := prs(request, response); err != nil {
+			return err
+		}
+		if x.prs != nil {
+			if err := x.prs(request, response); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return x
+}
+
+func (x T) GetResponse(log Logger, ctx context.Context, request []byte) ([]byte, error) {
+
+	response, err := x.getResponse(log, ctx, request)
 	if err == nil {
 		return response, nil
 	}
@@ -53,23 +110,25 @@ func GetResponse(log Logger, ctx context.Context, cfg Config, rw io.ReadWriter, 
 		}
 	}
 	err = merry.Appendf(err, "запрорс=`% X`", request).
-		Appendf("timeout_get_response=%v", cfg.TimeoutGetResponse).
-		Appendf("timeout_end_response=%v", cfg.TimeoutEndResponse).
-		Appendf("max_attempts_read=%d", cfg.MaxAttemptsRead)
+		Appendf("timeout_get_response=%v", x.cfg.TimeoutGetResponse).
+		Appendf("timeout_end_response=%v", x.cfg.TimeoutEndResponse).
+		Appendf("max_attempts_read=%d", x.cfg.MaxAttemptsRead)
 	if len(response) > 0 {
 		err = merry.Appendf(err, "ответ=`% X`", response)
-	}
-	if len(result) > 0 {
-		err = merry.Appendf(err, "результат=%s", result)
 	}
 	return response, err
 }
 
-type helper struct {
-	rw  io.ReadWriter
-	cfg Config
-	prs ParseResponseFunc
-	req []byte
+func SetEnableLog(enable bool) {
+	if enable {
+		atomic.StoreInt32(&atomicEnableLog, 1)
+	} else {
+		atomic.StoreInt32(&atomicEnableLog, 0)
+	}
+}
+
+func SetNotify(f NotifyFunc) {
+	atomicNotify.Store(f)
 }
 
 type result struct {
@@ -77,7 +136,7 @@ type result struct {
 	err      error
 }
 
-func (x helper) getResponse(log Logger, ctx context.Context) ([]byte, string, error) {
+func (x T) getResponse(log Logger, ctx context.Context, request []byte) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -85,8 +144,8 @@ func (x helper) getResponse(log Logger, ctx context.Context) ([]byte, string, er
 		lastResult result
 	)
 	for attempt := 0; attempt < x.cfg.MaxAttemptsRead; attempt++ {
-		if err := x.write(ctx, x.req); err != nil {
-			return nil, "", err
+		if err := x.write(ctx, request); err != nil {
+			return nil, err
 		}
 		ctx, _ := context.WithTimeout(ctx, x.cfg.TimeoutGetResponse)
 		c := make(chan result)
@@ -98,30 +157,30 @@ func (x helper) getResponse(log Logger, ctx context.Context) ([]byte, string, er
 		select {
 
 		case r := <-c:
-			strResult := ""
 			if r.err == nil && x.prs != nil {
-				strResult, r.err = x.prs(x.req, r.response)
+				r.err = x.prs(request, r.response)
 			}
-			if len(strResult) > 0 {
-				log = internal.LogPrependSuffixKeys(log,
-					LogKeyDeviceValue, strResult,
-					LogKeyDuration, time.Since(startWaitResponseMoment))
-			}
-			x.logAnswer(log, r.response, r.err)
+			log = internal.LogPrependSuffixKeys(log, LogKeyDuration, time.Since(startWaitResponseMoment))
+			logAnswer(log, request, r)
+			notify(startWaitResponseMoment, request, r, x.rw)
+
 			if merry.Is(r.err, Err) {
 				lastResult = r
 				pause(ctx.Done(), x.cfg.TimeoutEndResponse)
 				continue
 			}
 			if r.err != nil {
-				return r.response, strResult, r.err
+				return r.response, r.err
 			}
 
-			return r.response, strResult, nil
+			return r.response, nil
 
 		case <-ctx.Done():
 
-			x.logAnswer(log, nil, ctx.Err())
+			logAnswer(log, request, result{
+				response: nil,
+				err:      ctx.Err(),
+			})
 
 			switch ctx.Err() {
 
@@ -133,15 +192,14 @@ func (x helper) getResponse(log Logger, ctx context.Context) ([]byte, string, er
 				continue
 
 			default:
-				return nil, "", ctx.Err()
+				return nil, ctx.Err()
 			}
 		}
 	}
-	return lastResult.response, "", lastResult.err
-
+	return lastResult.response, lastResult.err
 }
 
-func (x helper) write(ctx context.Context, request []byte) error {
+func (x T) write(ctx context.Context, request []byte) error {
 
 	if x.cfg.Pause > 0 {
 		pause(ctx.Done(), x.cfg.Pause)
@@ -163,7 +221,7 @@ func (x helper) write(ctx context.Context, request []byte) error {
 	return err
 }
 
-func (x helper) waitForResponse(ctx context.Context, c chan result) {
+func (x T) waitForResponse(ctx context.Context, c chan result) {
 
 	var response []byte
 	ctxReady := context.Background()
@@ -200,7 +258,7 @@ func (x helper) waitForResponse(ctx context.Context, c chan result) {
 	}
 }
 
-func (x helper) read(bytesToReadCount int) ([]byte, error) {
+func (x T) read(bytesToReadCount int) ([]byte, error) {
 
 	b := make([]byte, bytesToReadCount)
 	readCount, err := x.rw.Read(b)
@@ -213,31 +271,25 @@ func (x helper) read(bytesToReadCount int) ([]byte, error) {
 	return b, nil
 }
 
-func SetEnableLog(enable bool) {
-	mu.Lock()
-	defer mu.Unlock()
-	enableLog = enable
-}
-
-func (x helper) logAnswer(log Logger, response []byte, err error) {
+func logAnswer(log Logger, request []byte, r result) {
 	if !isLogEnabled() {
 		return
 	}
-	str := fmt.Sprintf("% X --> % X", x.req, response)
-	if len(response) == 0 {
-		str = fmt.Sprintf("% X", x.req)
+	str := fmt.Sprintf("% X --> % X", request, r.response)
+	if len(r.response) == 0 {
+		str = fmt.Sprintf("% X", request)
 	}
 
-	if err == nil {
+	if r.err == nil {
 		log.Info(str)
 		return
 	}
-	if merry.Is(err, context.Canceled) {
+	if merry.Is(r.err, context.Canceled) {
 		log.Warn(str + ": прервано")
 		return
 	}
-	str += ": " + err.Error()
-	stack := internal.FormatMerryStacktrace(err)
+	str += ": " + r.err.Error()
+	stack := internal.FormatMerryStacktrace(r.err)
 	if len(stack) > 0 {
 		str += stack
 	}
@@ -245,15 +297,33 @@ func (x helper) logAnswer(log Logger, response []byte, err error) {
 }
 
 func isLogEnabled() bool {
-	mu.Lock()
-	defer mu.Unlock()
-	return enableLog
+	return atomic.LoadInt32(&atomicEnableLog) != 0
 }
 
-var (
-	mu        sync.Mutex
-	enableLog = true
-)
+func notify(startWaitResponseMoment time.Time, req []byte, r result, rw io.ReadWriter) {
+	ntf := getNotifyFunc()
+	if ntf == nil {
+		return
+	}
+	i := Info{
+		Request:    make([]byte, len(req)),
+		Response:   make([]byte, len(r.response)),
+		Err:        r.err,
+		Duration:   time.Since(startWaitResponseMoment),
+		ReadWriter: rw,
+	}
+	copy(i.Request, req)
+	copy(i.Response, r.response)
+	go ntf(i)
+}
+
+func getNotifyFunc() NotifyFunc {
+	x := atomicNotify.Load()
+	if x == nil {
+		return nil
+	}
+	return x.(NotifyFunc)
+}
 
 func pause(chDone <-chan struct{}, d time.Duration) {
 	timer := time.NewTimer(d)
@@ -267,3 +337,8 @@ func pause(chDone <-chan struct{}, d time.Duration) {
 		}
 	}
 }
+
+var (
+	atomicEnableLog int32 = 1
+	atomicNotify          = new(atomic.Value)
+)

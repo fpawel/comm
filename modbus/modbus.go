@@ -3,13 +3,10 @@ package modbus
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
 	"github.com/fpawel/comm/internal"
 	"github.com/powerman/structlog"
-	"io"
-	"strconv"
 )
 
 type ProtoCmd byte
@@ -28,8 +25,6 @@ type DevCmd uint16
 type Coefficient uint16
 
 var Err = merry.Append(comm.Err, "ошибка проткола modbus")
-
-type responseParserFunc = func(request, response []byte) (string, error)
 
 const (
 	LogKeyAddr         = "modbus_address"
@@ -58,98 +53,78 @@ func RequestRead3(addr Addr, firstRegister Var, registersCount uint16) Request {
 
 func Read3(log comm.Logger,
 	ctx context.Context,
-	cfg comm.Config,
-	rw io.ReadWriter, addr Addr,
-	firstReg Var, regsCount uint16,
-	parseResponse comm.ParseResponseFunc) ([]byte, error) {
+	cm comm.T, addr Addr,
+	firstReg Var, regsCount uint16) ([]byte, error) {
 
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyRegsCount, regsCount,
 		LogKeyFirstReg, firstReg,
 	)
-
-	req := RequestRead3(addr, firstReg, regsCount)
-
-	b, err := req.GetResponse(log, ctx, cfg, rw, func(request, response []byte) (string, error) {
+	cm = cm.WithAppendParse(func(request, response []byte) error {
 		lenMustBe := int(regsCount)*2 + 5
 		if len(response) != lenMustBe {
-			return "", merry.Errorf("длина ответа %d не равна %d", len(response), lenMustBe)
+			return merry.Errorf("длина ответа %d, а должна быть %d", len(response), lenMustBe)
 		}
-		if parseResponse != nil {
-			return parseResponse(request, response)
-		}
-		return "", nil
+		return nil
 	})
+	b, err := RequestRead3(addr, firstReg, regsCount).GetResponse(log, ctx, cm)
 	return b, merry.Appendf(err, "регистр %d: %d регистров", firstReg, regsCount)
 }
 
-func Read3BCDs(log comm.Logger, ctx context.Context, cfg comm.Config, rw io.ReadWriter, addr Addr, var3 Var, count int) ([]float64, error) {
-	//log = logPrependSuffixKeys(log, "format", "BCD", "values_count", count)
+func Read3BCDs(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int) ([]float64, error) {
 	var values []float64
-	_, err := Read3(log, ctx, cfg, rw, addr, var3, uint16(count*2),
-		func(request, response []byte) (string, error) {
-			var result string
-			for i := 0; i < count; i++ {
-				n := 3 + i*4
-				v, ok := ParseBCD6(response[n:])
-				if !ok {
-					return "", comm.Err.Here().Appendf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
-				}
-				values = append(values, v)
-				if len(result) > 0 {
-					result += ", "
-				}
-				result += fmt.Sprintf("%v", v)
-			}
-			return result, nil
-		})
+	response, err := Read3(log, ctx, cm, addr, var3, uint16(count*2))
+	for i := 0; i < count; i++ {
+		n := 3 + i*4
+		v, ok := ParseBCD6(response[n:])
+		if !ok {
+			return nil, comm.Err.Here().Appendf("не правильный код BCD % X, позиция %d", response[n:n+4], n)
+		}
+		values = append(values, v)
+	}
 	return values, err
-
 }
 
-func Read3UInt16(log comm.Logger, ctx context.Context, cfg comm.Config, rw io.ReadWriter, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
-	//log = logPrependSuffixKeys(log, "format", "uint16")
-	var result uint16
-	_, err := Read3(log, ctx, cfg, rw, addr, var3, 1,
-		func(_, response []byte) (string, error) {
-			result = byteOrder.Uint16(response[3:5])
-			return strconv.Itoa(int(result)), nil
-		})
-	return result, merry.Append(err, "запрос числа в uin16")
+func Read3UInt16(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
+	response, err := Read3(log, ctx, cm, addr, var3, 1)
+	if err != nil {
+		return 0, merry.Append(err, "запрос числа uin16")
+	}
+	return byteOrder.Uint16(response[3:5]), nil
 }
 
-func Read3BCD(log comm.Logger, ctx context.Context, cfg comm.Config, rw io.ReadWriter, addr Addr, var3 Var) (float64, error) {
-	//log = logPrependSuffixKeys(log, "format", "bcd")
-	var result float64
-	_, err := Read3(log, ctx, cfg, rw, addr, var3, 2,
-		func(request []byte, response []byte) (string, error) {
-			var ok bool
-			if result, ok = ParseBCD6(response[3:]); !ok {
-				return "", comm.Err.Here().Appendf("не правильный код BCD % X", response[3:7])
-			}
-			return fmt.Sprintf("%v", result), nil
-		})
-	return result, merry.Append(err, "запрос числа в BCD")
+func Read3BCD(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var) (float64, error) {
+	response, err := Read3(log, ctx, cm, addr, var3, 2)
+	if err != nil {
+		return 0, merry.Append(err, "запрос числа BCD")
+	}
+	result, ok := ParseBCD6(response[3:7])
+	if !ok {
+		return 0, comm.Err.Here().Appendf("не правильный код BCD % X", response[3:7])
+	}
+	return result, nil
 }
 
-func Write32(log comm.Logger, ctx context.Context, cfg comm.Config, rw io.ReadWriter, addr Addr, protocolCommandCode ProtoCmd,
+func Write32(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, protocolCommandCode ProtoCmd,
 	deviceCommandCode DevCmd, value float64) error {
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyDeviceCmd, deviceCommandCode,
 		LogKeyDeviceCmdArg, value,
 	)
 	req := NewWrite32BCDRequest(addr, protocolCommandCode, deviceCommandCode, value)
-	_, err := req.GetResponse(log, ctx, cfg, rw, func(request, response []byte) (string, error) {
-		for i := 2; i < 6; i++ {
-			if request[i] != response[i] {
-				return "", merry.Appendf(Err.Here(),
-					"ошибка формата: запрос[2:6]==[% X] != ответ[2:6]==[% X]", request[2:6], response[2:6])
-			}
+	response, err := req.GetResponse(log, ctx, cm)
+	if err != nil {
+		return merry.Appendf(err, "запись регистр=32 команда=%d аргумент=%v", deviceCommandCode, value)
+	}
+	request := req.Bytes()
+	for i := 2; i < 6; i++ {
+		if request[i] != response[i] {
+			return merry.Appendf(Err.Here(),
+				"ошибка формата: запрос[2:6]==[% X] != ответ[2:6]==[% X]", request[2:6], response[2:6]).
+				Appendf("запись регистр=32 команда=%d аргумент=%v", deviceCommandCode, value)
 		}
-		return "OK", nil
-	})
-	return merry.Appendf(err, "запись регистр=32 команда=%d аргумент=%v",
-		deviceCommandCode, value)
+	}
+	return nil
 }
 
 func (x Request) Bytes() (b []byte) {
@@ -162,21 +137,19 @@ func (x Request) Bytes() (b []byte) {
 	return
 }
 
-func (x Request) GetResponse(log comm.Logger, ctx context.Context, cfg comm.Config, rw io.ReadWriter, prs comm.ParseResponseFunc) ([]byte, error) {
+func (x Request) GetResponse(log comm.Logger, ctx context.Context, cm comm.T) ([]byte, error) {
 	log = internal.LogPrependSuffixKeys(log,
 		LogKeyAddr, x.Addr,
 		LogKeyCmd, x.ProtoCmd,
 		LogKeyData, x.Data)
-	b, err := comm.GetResponse(log, ctx, cfg, rw, x.Bytes(), func(request, response []byte) (s string, err error) {
+	cm = cm.WithPrependParse(func(request, response []byte) error {
 		if err := x.checkResponse(response); err != nil {
-			return "", err
+			return err
 		}
-		if prs != nil {
-			return prs(request, response)
-		}
-		return "", nil
+		return nil
 	})
-	return b, merry.Appendf(err, "modbus адрес=%d команда=%d", x.Addr, x.ProtoCmd)
+	b, err := cm.GetResponse(log, ctx, x.Bytes())
+	return b, merry.Appendf(err, "protocol_addr=%d protocol_command=%d", x.Addr, x.ProtoCmd)
 }
 
 func NewWrite32BCDRequest(addr Addr, protocolCommandCode ProtoCmd, deviceCommandCode DevCmd,
