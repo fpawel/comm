@@ -122,6 +122,24 @@ func (x T) GetResponse(log Logger, ctx context.Context, request []byte) ([]byte,
 	return response, err
 }
 
+func Write(ctx context.Context, request []byte, rw io.Writer, cfg Config) error {
+
+	t := time.Now()
+	writtenCount, err := rw.Write(request)
+	for ; err == nil && writtenCount == 0 &&
+		time.Since(t) < cfg.TimeoutGetResponse; writtenCount, err = rw.Write(request) {
+		// COMPORT PENDING
+		pause(ctx.Done(), cfg.TimeoutEndResponse)
+	}
+	if err != nil {
+		return merry.Wrap(err)
+	}
+	if writtenCount != len(request) {
+		return fmt.Errorf("записано %d байт из %d", writtenCount, len(request))
+	}
+	return err
+}
+
 func SetEnableLog(enable bool) {
 	if enable {
 		atomic.StoreInt32(&atomicEnableLog, 1)
@@ -206,21 +224,7 @@ func (x T) write(ctx context.Context, request []byte) error {
 	if x.cfg.Pause > 0 {
 		pause(ctx.Done(), x.cfg.Pause)
 	}
-
-	t := time.Now()
-	writtenCount, err := x.rw.Write(request)
-	for ; err == nil && writtenCount == 0 &&
-		time.Since(t) < x.cfg.TimeoutGetResponse; writtenCount, err = x.rw.Write(request) {
-		// COMPORT PENDING
-		pause(ctx.Done(), x.cfg.TimeoutEndResponse)
-	}
-	if err != nil {
-		return merry.Wrap(err)
-	}
-	if writtenCount != len(request) {
-		return fmt.Errorf("записано %d байт из %d", writtenCount, len(request))
-	}
-	return err
+	return Write(ctx, request, x.rw, x.cfg)
 }
 
 func (x T) waitForResponse(ctx context.Context, c chan result) {
