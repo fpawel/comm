@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -63,11 +64,13 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 
 	floatBits := func(endian binary.ByteOrder) (float64, error) {
 		bits := endian.Uint32(d)
-		x := float64(math.Float32frombits(bits))
-		if math.IsNaN(x) {
-			return x, fmt.Errorf("not a float %v number", endian)
+		f32 := math.Float32frombits(bits)
+		str := strconv.FormatFloat(float64(f32), 'f', -1, 32)
+		f64, _ := strconv.ParseFloat(str, 64)
+		if math.IsNaN(f64) || math.IsInf(f64, -1) || math.IsInf(f64, 1) || math.IsInf(f64, 0) {
+			return f64, fmt.Errorf("not a float %v number", endian)
 		}
-		return x, nil
+		return f64, nil
 	}
 	intBits := func(endian binary.ByteOrder) float64 {
 		bits := endian.Uint32(d)
