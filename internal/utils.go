@@ -10,6 +10,9 @@ import (
 )
 
 func LogPrependSuffixKeys(log *structlog.Logger, args ...interface{}) *structlog.Logger {
+	if log == nil {
+		return nil
+	}
 	var keys []string
 	for i, arg := range args {
 		if i%2 == 0 {
@@ -45,5 +48,4 @@ func FormatMerryStacktrace(e error) string {
 		}
 	}
 	return buf.String()
-
 }

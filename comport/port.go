@@ -29,7 +29,9 @@ func (x *Port) SetConfig(log *structlog.Logger, c Config) {
 		return
 	}
 	if x.p != nil {
-		log.ErrIfFail(x.Close, "close_comport", x.c.Name)
+		if log != nil {
+			log.ErrIfFail(x.Close, "close_comport", x.c.Name)
+		}
 	}
 	x.c = c
 }

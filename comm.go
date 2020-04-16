@@ -278,7 +278,7 @@ func (x T) read(bytesToReadCount int) ([]byte, error) {
 }
 
 func logAnswer(log Logger, request []byte, r result) {
-	if !isLogEnabled() {
+	if log == nil || !isLogEnabled() {
 		return
 	}
 	str := fmt.Sprintf("% X --> % X", request, r.response)
