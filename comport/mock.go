@@ -9,7 +9,7 @@ import (
 
 func NewMock(f RequestToResponseFunc) comm.T {
 	return comm.New(NewMockPort(f), comm.Config{
-		TimeoutGetResponse: time.Millisecond,
+		TimeoutGetResponse: 100 * time.Millisecond,
 		TimeoutEndResponse: 0,
 	})
 }
