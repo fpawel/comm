@@ -67,8 +67,18 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 		f32 := math.Float32frombits(bits)
 		str := strconv.FormatFloat(float64(f32), 'f', -1, 32)
 		f64, _ := strconv.ParseFloat(str, 64)
-		if math.IsNaN(f64) || math.IsInf(f64, -1) || math.IsInf(f64, 1) || math.IsInf(f64, 0) {
-			return f64, fmt.Errorf("not a float %v number", endian)
+
+		if math.IsNaN(f64) {
+			return f64, errors.New("not a number")
+		}
+		if math.IsInf(f64, -1) {
+			return f64, errors.New("-Infinity")
+		}
+		if math.IsInf(f64, +1) {
+			return f64, errors.New("+Infinity")
+		}
+		if math.IsInf(f64, 0) {
+			return f64, errors.New("0Infinity")
 		}
 		return f64, nil
 	}
@@ -87,7 +97,7 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 		if x, ok := ParseBCD6(d); ok {
 			return x, nil
 		} else {
-			return 0, errors.New("not a BCD number")
+			return 0, errors.New("wrong BCD")
 		}
 	case FloatBigEndian:
 		return floatBits(be)

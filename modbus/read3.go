@@ -57,7 +57,7 @@ func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var
 		n := 3 + i*4
 		v, err := format.ParseFloat(response[n:][:4])
 		if err != nil {
-			return nil, merry.Appendf(err, "not a number %s: % X: позиция %d", format, response[n:n+4], n)
+			return nil, merry.Appendf(err, "%s: % X: позиция %d", format, response[n:n+4], n)
 		}
 		values = append(values, v)
 	}
@@ -75,7 +75,7 @@ func Read3Value(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3
 	}
 	result, err := format.ParseFloat(response[3:7])
 	if err != nil {
-		return 0, merry.Appendf(err, "not a number %s: % X: %s", format, response[3:7], err)
+		return 0, merry.Appendf(err, "%s: % X: %s", format, response[3:7], err)
 	}
 	return result, nil
 }
