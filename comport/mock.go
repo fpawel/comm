@@ -1,7 +1,7 @@
 package comport
 
 import (
-	"fmt"
+	"github.com/ansel1/merry"
 	"github.com/fpawel/comm"
 	"io"
 	"time"
@@ -34,7 +34,7 @@ func (x *mockComport) Write(p []byte) (int, error) {
 
 func (x *mockComport) Read(p []byte) (int, error) {
 	if len(x.resp) == 0 {
-		return 0, fmt.Errorf("unsupported request %02X", x.req)
+		return 0, merry.Errorf("unsupported request %02X", x.req)
 	}
 	if len(p) < len(x.resp) {
 		return len(x.resp), nil

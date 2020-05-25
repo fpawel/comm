@@ -135,7 +135,7 @@ func Write(ctx context.Context, request []byte, rw io.Writer, cfg Config) error 
 		return merry.Wrap(err)
 	}
 	if writtenCount != len(request) {
-		return fmt.Errorf("записано %d байт из %d", writtenCount, len(request))
+		return merry.Errorf("записано %d байт из %d", writtenCount, len(request))
 	}
 	return err
 }
@@ -272,7 +272,7 @@ func (x T) read(bytesToReadCount int) ([]byte, error) {
 		return nil, merry.Wrap(err)
 	}
 	if readCount != bytesToReadCount {
-		return nil, fmt.Errorf("считано %d байт из %d: % X", readCount, bytesToReadCount, b[:readCount])
+		return nil, merry.Errorf("считано %d байт из %d: % X", readCount, bytesToReadCount, b[:readCount])
 	}
 	return b, nil
 }

@@ -2,8 +2,7 @@ package modbus
 
 import (
 	"encoding/binary"
-	"errors"
-	"fmt"
+	"github.com/ansel1/merry"
 	"math"
 	"strconv"
 	"strings"
@@ -29,7 +28,7 @@ const (
 
 func (ff FloatBitsFormat) Validate() error {
 	if _, f := FloatFormats[ff]; !f {
-		return fmt.Errorf(`занчение строки формата должно быть из списка %s`, formatParamFormats())
+		return merry.Errorf(`занчение строки формата должно быть из списка %s`, formatParamFormats())
 	}
 	return nil
 }
@@ -69,16 +68,16 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 		f64, _ := strconv.ParseFloat(str, 64)
 
 		if math.IsNaN(f64) {
-			return f64, errors.New("not a number")
+			return f64, merry.New("not a number")
 		}
 		if math.IsInf(f64, -1) {
-			return f64, errors.New("-Infinity")
+			return f64, merry.New("-Infinity")
 		}
 		if math.IsInf(f64, +1) {
-			return f64, errors.New("+Infinity")
+			return f64, merry.New("+Infinity")
 		}
 		if math.IsInf(f64, 0) {
-			return f64, errors.New("0Infinity")
+			return f64, merry.New("0Infinity")
 		}
 		return f64, nil
 	}
@@ -97,7 +96,7 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 		if x, ok := ParseBCD6(d); ok {
 			return x, nil
 		} else {
-			return 0, errors.New("wrong BCD")
+			return 0, merry.New("wrong BCD")
 		}
 	case FloatBigEndian:
 		return floatBits(be)
@@ -108,7 +107,7 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 	case IntLittleEndian:
 		return intBits(le), nil
 	default:
-		return 0, fmt.Errorf("wrong float format %q", ff)
+		return 0, merry.Errorf("wrong float format %q", ff)
 	}
 }
 
