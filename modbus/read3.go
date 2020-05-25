@@ -75,7 +75,7 @@ func Read3Value(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3
 	}
 	result, err := format.ParseFloat(response[3:7])
 	if err != nil {
-		return 0, merry.Appendf(err, "%s: % X: %s", format, response[3:7], err)
+		return 0, merry.Appendf(err, "%s: % X", format, response[3:7])
 	}
 	return result, nil
 }
