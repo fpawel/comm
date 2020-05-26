@@ -40,7 +40,7 @@ func (x RequestRead3) GetResponse(log comm.Logger, ctx context.Context, cm comm.
 		return nil
 	})
 	b, err := x.Request().GetResponse(log, ctx, cm)
-	return b, merry.Appendf(err, "регистр %d: %d регистров", x.FirstRegister, x.RegistersCount)
+	return b, merry.Appendf(err, "считывание регистр %d, %d регистров", x.FirstRegister, x.RegistersCount)
 }
 
 func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int, format FloatBitsFormat) ([]float64, error) {

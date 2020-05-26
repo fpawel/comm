@@ -64,7 +64,7 @@ func (x Request) GetResponse(log comm.Logger, ctx context.Context, cm comm.T) ([
 		return nil
 	})
 	b, err := cm.GetResponse(log, ctx, x.Bytes())
-	return b, merry.Appendf(err, "модбас адрес=%d команда=%d", x.Addr, x.ProtoCmd)
+	return b, merry.Appendf(err, "модбас адрес %d команда %d", x.Addr, x.ProtoCmd)
 }
 
 func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
