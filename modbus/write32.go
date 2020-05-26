@@ -38,7 +38,7 @@ func (x RequestWrite32) GetResponse(log comm.Logger, ctx context.Context, cm com
 	)
 
 	wrapErr := func(err error) error {
-		return merry.Appendf(err, "запись в прибор, команда %d, аргумент %v, %s",
+		return merry.Appendf(err, "запись в прибор (команда=%d аргумент=%v %s)",
 			x.DeviceCmd, x.Value, x.Format)
 	}
 
