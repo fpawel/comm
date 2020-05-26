@@ -8,7 +8,7 @@ import (
 
 type Port struct {
 	c Config
-	p *winComport
+	p *port
 }
 
 func NewPort(c Config) *Port {
@@ -48,9 +48,12 @@ func (x *Port) Open() error {
 	if x.c == c0 {
 		return merry.New("параметры СОМ порта не были заданы")
 	}
+	if len(x.c.Name) == 0 {
+		return merry.New("не задано имя СОМ порта")
+	}
 
 	var err error
-	x.p, err = openWinComport(&x.c)
+	x.p, err = openPort(&x.c)
 	if err != nil {
 		return merry.Prepend(err, x.c.Name)
 	}
@@ -63,7 +66,10 @@ func (x *Port) Close() error {
 	}
 	err := x.p.Close()
 	x.p = nil
-	return err
+	if err != nil {
+		return merry.Prependf(err, "%s: закрыть", x)
+	}
+	return nil
 }
 
 func (x *Port) Write(buf []byte) (int, error) {
@@ -72,7 +78,7 @@ func (x *Port) Write(buf []byte) (int, error) {
 	}
 	n, err := x.p.Write(buf)
 	if err != nil {
-		err = merry.Prependf(err, "%s: запись", x.c.Name)
+		err = merry.Prependf(err, "%s: запись", x)
 	}
 	return n, err
 }
@@ -81,18 +87,21 @@ func (x *Port) Read(buf []byte) (int, error) {
 	if err := x.Open(); err != nil {
 		return 0, err
 	}
-	n, err := read(x.p, buf)
+	n, err := readPort(x.p, buf)
 	if err != nil {
-		err = merry.Prependf(err, "%s: считывание", x.c.Name)
+		err = merry.Prependf(err, "%s: считывание", x)
 	}
 	return n, err
 }
 
 func (x *Port) String() string {
-	return x.c.Name
+	if len(x.c.Name) > 0 {
+		return x.c.Name
+	}
+	return "СОМ?"
 }
 
-func read(p *winComport, buf []byte) (int, error) {
+func readPort(p *port, buf []byte) (int, error) {
 	if len(buf) == 0 {
 		return p.BytesToReadCount()
 	}

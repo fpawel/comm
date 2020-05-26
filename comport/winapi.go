@@ -10,7 +10,7 @@ import (
 	"unsafe"
 )
 
-type winComport struct {
+type port struct {
 	f  *os.File
 	fd syscall.Handle
 	rl sync.Mutex
@@ -19,11 +19,11 @@ type winComport struct {
 	wo *syscall.Overlapped
 }
 
-func (p *winComport) Close() error {
+func (p *port) Close() error {
 	return p.f.Close()
 }
 
-func (p *winComport) Write(buf []byte) (int, error) {
+func (p *port) Write(buf []byte) (int, error) {
 	n, err := p.write(buf)
 	if err != nil {
 		return n, merry.Appendf(err, "written count: %d", n)
@@ -31,7 +31,7 @@ func (p *winComport) Write(buf []byte) (int, error) {
 	return n, nil
 }
 
-func (p *winComport) Read(buf []byte) (int, error) {
+func (p *port) Read(buf []byte) (int, error) {
 	n, err := p.read(buf)
 	if err != nil {
 		return n, merry.Appendf(err, "read count: %d", n)
@@ -41,18 +41,18 @@ func (p *winComport) Read(buf []byte) (int, error) {
 
 // Discards data written to the port but not transmitted,
 // or data received but not read
-func (p *winComport) Flush() error {
+func (p *port) Flush() error {
 	return purgeComm(p.fd)
 }
 
 // Retrieves information about a communications error and reports the current status of a communications device.
 // The function is called when a communications error occurs,
 // and it clears the device's error flag to enable additional input and output (I/O) operations.
-func (p *winComport) ClearCommError(errors *uint32, commStat *CommStat) error {
+func (p *port) ClearCommError(errors *uint32, commStat *CommStat) error {
 	return clearCommError(p.fd, errors, commStat)
 }
 
-func (p *winComport) BytesToReadCount() (int, error) {
+func (p *port) BytesToReadCount() (int, error) {
 	var (
 		errors   uint32
 		commStat CommStat
@@ -64,7 +64,7 @@ func (p *winComport) BytesToReadCount() (int, error) {
 }
 
 // openPort opens a serial port with the specified configuration
-func openWinComport(c *Config) (*winComport, error) {
+func openPort(c *Config) (*port, error) {
 	size, par, stop := c.Size, c.Parity, c.StopBits
 	if size == 0 {
 		size = DefaultSize
@@ -75,47 +75,10 @@ func openWinComport(c *Config) (*winComport, error) {
 	if stop == 0 {
 		stop = Stop1
 	}
-	return openFile(c.Name, c.Baud, size, par, stop, c.ReadTimeout)
+	return openPort2(c.Name, c.Baud, size, par, stop, c.ReadTimeout)
 }
 
-//func openWinComportDebounce(config *Config, timeout time.Duration, ctx context.Context) (port *winComport, err error) {
-//	ctx, _ = context.WithTimeout(ctx, timeout)
-//	var wg sync.WaitGroup
-//	wg.Add(1)
-//	go func() {
-//		defer wg.Done()
-//		for {
-//			select {
-//			case <-ctx.Done():
-//				if err == nil {
-//					err = ctx.Err()
-//				}
-//				return
-//			default:
-//				if port, err = openWinComport(config); err == nil {
-//					return
-//				}
-//			}
-//		}
-//	}()
-//	wg.Wait()
-//	return
-//}
-
-var (
-	nSetCommState,
-	nSetCommTimeouts,
-	nSetCommMask,
-	nSetupComm,
-	nGetOverlappedResult,
-	nCreateEvent,
-	nResetEvent,
-	nPurgeComm,
-	//nFlushFileBuffers,
-	nClearCommError uintptr
-)
-
-func openFile(name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (*winComport, error) {
+func openPort2(name string, baud int, databits byte, parity Parity, stopbits StopBits, readTimeout time.Duration) (*port, error) {
 	if err := CheckPortNameIsValid(name); err != nil {
 		return nil, err
 	}
@@ -166,7 +129,7 @@ func openFile(name string, baud int, databits byte, parity Parity, stopbits Stop
 	if err != nil {
 		return nil, err
 	}
-	port := new(winComport)
+	port := new(port)
 	port.f = f
 	port.fd = h
 	port.ro = ro
@@ -183,7 +146,7 @@ func getProcAddr(lib syscall.Handle, name string) uintptr {
 	return addr
 }
 
-func (p *winComport) write(buf []byte) (int, error) {
+func (p *port) write(buf []byte) (int, error) {
 	p.wl.Lock()
 	defer p.wl.Unlock()
 
@@ -202,7 +165,7 @@ func (p *winComport) write(buf []byte) (int, error) {
 	return getOverlappedResult(p.fd, p.wo)
 }
 
-func (p *winComport) read(buf []byte) (int, error) {
+func (p *port) read(buf []byte) (int, error) {
 	if p == nil || p.f == nil {
 		return 0, merry.New("invalid port on read")
 	}
@@ -407,3 +370,16 @@ func init() {
 	//nFlushFileBuffers = getProcAddr(k32, "FlushFileBuffers")
 	nClearCommError = getProcAddr(k32, "ClearCommError")
 }
+
+var (
+	nSetCommState,
+	nSetCommTimeouts,
+	nSetCommMask,
+	nSetupComm,
+	nGetOverlappedResult,
+	nCreateEvent,
+	nResetEvent,
+	nPurgeComm,
+	//nFlushFileBuffers,
+	nClearCommError uintptr
+)
