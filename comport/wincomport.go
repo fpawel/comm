@@ -58,7 +58,7 @@ func (p *winComport) BytesToReadCount() (int, error) {
 		commStat CommStat
 	)
 	if err := p.ClearCommError(&errors, &commStat); err != nil {
-		return 0, merry.Appendf(err, "unable to get bytes to read count")
+		return 0, merry.Prepend(err, "ClearCommError: не удалось получить количество доступных для чтения байт")
 	}
 	return int(commStat.InQue), nil
 }

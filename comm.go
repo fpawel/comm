@@ -36,8 +36,8 @@ type Config struct {
 var Err = merry.New("ошибка проткола последовательной приёмопередачи")
 
 const (
-	LogKeyDuration = "comm_duration"
-	LogKeyAttempt  = "comm_attempt"
+	LogKeyDuration = "время_ответа"
+	LogKeyAttempt  = "число_попыток"
 )
 
 type T struct {
@@ -105,19 +105,20 @@ func (x T) GetResponse(log Logger, ctx context.Context, request []byte) ([]byte,
 		return response, nil
 	}
 	if merry.Is(err, context.Canceled) {
-		err = merry.Append(err, "прервано")
+		err = merry.Append(err, "ожидание ответа прервано")
 	} else if merry.Is(err, context.DeadlineExceeded) {
 		err = merry.WithMessage(err, "нет ответа").WithCause(Err)
 		if !merry.Is(err, Err) || !merry.Is(err, context.DeadlineExceeded) {
 			panic("unexpected")
 		}
 	}
-	err = merry.Appendf(err, "запрорс=`% X`", request).
-		Appendf("timeout_get_response=%v", x.cfg.TimeoutGetResponse).
-		Appendf("timeout_end_response=%v", x.cfg.TimeoutEndResponse).
-		Appendf("max_attempts_read=%d", x.cfg.MaxAttemptsRead)
+	err = merry.Appendf(err, "запрорс % X", request).
+		Appendf("таймаут ожидания ответа %v, таймаут окончания ответа %v, %d повторов",
+			x.cfg.TimeoutGetResponse,
+			x.cfg.TimeoutEndResponse,
+			x.cfg.MaxAttemptsRead)
 	if len(response) > 0 {
-		err = merry.Appendf(err, "ответ=`% X`", response)
+		err = merry.Appendf(err, "ответ % X", response)
 	}
 	return response, err
 }

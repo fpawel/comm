@@ -30,7 +30,7 @@ func (x *Port) SetConfig(log *structlog.Logger, c Config) {
 	}
 	if x.p != nil {
 		if log != nil {
-			log.ErrIfFail(x.Close, "close_comport", x.c.Name)
+			log.ErrIfFail(x.Close, "закрыть_порт", x.c.Name)
 		}
 	}
 	x.c = c
@@ -52,7 +52,7 @@ func (x *Port) Open() error {
 	var err error
 	x.p, err = openWinComport(&x.c)
 	if err != nil {
-		return err
+		return merry.Prepend(err, x.c.Name)
 	}
 	return nil
 }
@@ -70,19 +70,31 @@ func (x *Port) Write(buf []byte) (int, error) {
 	if err := x.Open(); err != nil {
 		return 0, err
 	}
-	return x.p.Write(buf)
+	n, err := x.p.Write(buf)
+	if err != nil {
+		err = merry.Prependf(err, "%s: запись", x.c.Name)
+	}
+	return n, err
 }
 
 func (x *Port) Read(buf []byte) (int, error) {
 	if err := x.Open(); err != nil {
 		return 0, err
 	}
-	if len(buf) == 0 {
-		return x.p.BytesToReadCount()
+	n, err := read(x.p, buf)
+	if err != nil {
+		err = merry.Prependf(err, "%s: считывание", x.c.Name)
 	}
-	return x.p.Read(buf)
+	return n, err
 }
 
 func (x *Port) String() string {
 	return x.c.Name
+}
+
+func read(p *winComport, buf []byte) (int, error) {
+	if len(buf) == 0 {
+		return p.BytesToReadCount()
+	}
+	return p.Read(buf)
 }

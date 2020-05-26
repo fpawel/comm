@@ -23,16 +23,16 @@ type DevCmd uint16
 
 type Coefficient uint16
 
-var Err = merry.Append(comm.Err, "ошибка проткола modbus")
+var Err = merry.Append(comm.Err, "ошибка модбас")
 
 const (
-	LogKeyAddr         = "modbus_address"
-	LogKeyCmd          = "modbus_cmd"
-	LogKeyData         = "modbus_data"
-	LogKeyRegsCount    = "modbus_regs_count"
-	LogKeyFirstReg     = "modbus_first_register"
-	LogKeyDeviceCmd    = "modbus_device_cmd"
-	LogKeyDeviceCmdArg = "modbus_device_cmd_arg"
+	LogKeyAddr         = "модбас_адресс"
+	LogKeyCmd          = "модбас_команда"
+	LogKeyData         = "модбас_данные"
+	LogKeyRegsCount    = "модбас_число_регистров"
+	LogKeyFirstReg     = "модбас_регистр"
+	LogKeyDeviceCmd    = "модбас_запись32"
+	LogKeyDeviceCmdArg = "модбас_аргумент"
 )
 
 func SetLogKeysFormat() {
@@ -64,7 +64,7 @@ func (x Request) GetResponse(log comm.Logger, ctx context.Context, cm comm.T) ([
 		return nil
 	})
 	b, err := cm.GetResponse(log, ctx, x.Bytes())
-	return b, merry.Appendf(err, "protocol_addr=%d protocol_command=%d", x.Addr, x.ProtoCmd)
+	return b, merry.Appendf(err, "модбас адрес=%d команда=%d", x.Addr, x.ProtoCmd)
 }
 
 func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
@@ -85,25 +85,25 @@ func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
 func (x Request) checkResponse(response []byte) error {
 
 	if len(response) == 0 {
-		return Err.Here().Append("нет ответа")
+		return Err.Here().Append("нет ответа модбас")
 	}
 
 	if len(response) < 4 {
-		return Err.Here().Append("длина ответа меньше 4")
+		return Err.Here().Append("длина ответа модбас меньше 4")
 	}
 
 	if h, l := CRC16(response); h != 0 || l != 0 {
-		return Err.Here().Append("CRC16 не ноль")
+		return Err.Here().Append("CRC16 ответа модбас не ноль")
 	}
 	if response[0] != byte(x.Addr) {
-		return Err.Here().Append("несовпадение адресов запроса %d и ответа %d")
+		return Err.Here().Append("несовпадение адресов модбас запроса %d и ответа %d")
 	}
 
 	if len(response) == 5 && byte(x.ProtoCmd)|0x80 == response[1] {
-		return Err.Here().Appendf("код ошибки прибора %d", response[2]).WithUserMessagef("код ошибки прибора %d", response[2])
+		return Err.Here().Appendf("код ошибки модбас %d", response[2])
 	}
 	if response[1] != byte(x.ProtoCmd) {
-		return Err.Here().Append("несовпадение кодов команд запроса и ответа")
+		return Err.Here().Append("несовпадение кодов команд модбас запроса и ответа")
 	}
 
 	return nil
