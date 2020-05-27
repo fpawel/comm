@@ -45,40 +45,46 @@ func (x RequestRead3) GetResponse(log comm.Logger, ctx context.Context, cm comm.
 
 func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int, format FloatBitsFormat) ([]float64, error) {
 	var values []float64
-	response, err := RequestRead3{
+
+	cm = cm.WithAppendParse(func(_, response []byte) error {
+		for i := 0; i < count; i++ {
+			n := 3 + i*4
+			v, err := format.ParseFloat(response[n:][:4])
+			if err != nil {
+				return merry.Appendf(err, "поз.%d подстрока % X, ожидалось число %s", n, response[n:n+4], format)
+			}
+			values = append(values, v)
+		}
+		return nil
+	})
+
+	_, err := RequestRead3{
 		Addr:           addr,
 		FirstRegister:  var3,
 		RegistersCount: uint16(count * 2),
 	}.GetResponse(log, ctx, cm)
 	if err != nil {
-		return nil, merry.Appendf(err, "считывание %d параметров %s", count, format)
-	}
-	for i := 0; i < count; i++ {
-		n := 3 + i*4
-		v, err := format.ParseFloat(response[n:][:4])
-		if err != nil {
-			return nil, merry.Appendf(err, "поз.%d подстрока % X, ожидалось число %s", n, response[n:n+4], format)
-		}
-		values = append(values, v)
+		err = merry.Appendf(err, "считывание %d параметров %s", count, format)
 	}
 	return values, err
 }
 
 func Read3Value(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, format FloatBitsFormat) (float64, error) {
-	response, err := RequestRead3{
+	var result float64
+	cm = cm.WithAppendParse(func(_, response []byte) error {
+		var err error
+		result, err = format.ParseFloat(response[3:7])
+		if err != nil {
+			return merry.Appendf(err, "поз.3 подстрока % X, ожидалось число %s", response[3:7], format)
+		}
+		return nil
+	})
+	_, err := RequestRead3{
 		Addr:           addr,
 		FirstRegister:  var3,
 		RegistersCount: 2,
 	}.GetResponse(log, ctx, cm)
-	if err != nil {
-		return 0, merry.Appendf(err, "запрос значения %s", format)
-	}
-	result, err := format.ParseFloat(response[3:7])
-	if err != nil {
-		n := 3
-		return 0, merry.Appendf(err, "поз.%d подстрока % X, ожидалось число %s", n, response[n:n+4], format)
-	}
-	return result, nil
+	return result, err
 }
 
 func Read3UInt16(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, byteOrder binary.ByteOrder) (uint16, error) {
