@@ -68,7 +68,7 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 		f64, _ := strconv.ParseFloat(str, 64)
 
 		if math.IsNaN(f64) {
-			return f64, merry.New("not a number")
+			return f64, merry.New("NaN")
 		}
 		if math.IsInf(f64, -1) {
 			return f64, merry.New("-Infinity")
@@ -93,11 +93,7 @@ func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
 
 	switch ff {
 	case BCD:
-		if x, ok := ParseBCD6(d); ok {
-			return x, nil
-		} else {
-			return 0, merry.New("wrong BCD")
-		}
+		return ParseBCD6(d)
 	case FloatBigEndian:
 		return floatBits(be)
 	case FloatLittleEndian:

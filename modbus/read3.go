@@ -35,12 +35,12 @@ func (x RequestRead3) GetResponse(log comm.Logger, ctx context.Context, cm comm.
 	cm = cm.WithAppendParse(func(request, response []byte) error {
 		lenMustBe := int(x.RegistersCount)*2 + 5
 		if len(response) != lenMustBe {
-			return merry.Errorf("длина ответа %d, а должна быть %d", len(response), lenMustBe)
+			return merry.Errorf("ожидалось %d байт ответа, получено %d", lenMustBe, len(response))
 		}
 		return nil
 	})
 	b, err := x.Request().GetResponse(log, ctx, cm)
-	return b, merry.Appendf(err, "считывание регистр %d, %d регистров", x.FirstRegister, x.RegistersCount)
+	return b, merry.Appendf(err, "считывание модбас %d, %d", x.FirstRegister, x.RegistersCount)
 }
 
 func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int, format FloatBitsFormat) ([]float64, error) {
@@ -51,13 +51,13 @@ func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var
 		RegistersCount: uint16(count * 2),
 	}.GetResponse(log, ctx, cm)
 	if err != nil {
-		return nil, merry.Appendf(err, "запрос %d значений %s", count, format)
+		return nil, merry.Appendf(err, "считывание %d параметров %s", count, format)
 	}
 	for i := 0; i < count; i++ {
 		n := 3 + i*4
 		v, err := format.ParseFloat(response[n:][:4])
 		if err != nil {
-			return nil, merry.Appendf(err, "%s: % X: позиция %d", format, response[n:n+4], n)
+			return nil, merry.Appendf(err, "поз.%d подстрока % X, ожидалось число %s", n, response[n:n+4], format)
 		}
 		values = append(values, v)
 	}
@@ -75,7 +75,8 @@ func Read3Value(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3
 	}
 	result, err := format.ParseFloat(response[3:7])
 	if err != nil {
-		return 0, merry.Appendf(err, "%s: % X", format, response[3:7])
+		n := 3
+		return 0, merry.Appendf(err, "поз.%d подстрока % X, ожидалось число %s", n, response[n:n+4], format)
 	}
 	return result, nil
 }

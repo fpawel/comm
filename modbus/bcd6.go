@@ -1,28 +1,41 @@
 package modbus
 
-import "math"
+import (
+	"github.com/ansel1/merry"
+	"math"
+)
 
-func ParseBCD6(b []byte) (r float64, ok bool) {
+func ParseBCD6(b []byte) (float64, error) {
 	_ = b[3] // early bounds check to guarantee safety of writes below
-	var x, y float64
-	if x, y, ok = dec2(b[1]); ok {
-		r += 100000*x + 10000*y
-		if x, y, ok = dec2(b[2]); ok {
-			r += 1000*x + 100*y
-			if x, y, ok = dec2(b[3]); ok {
-				r += 10*x + y
-				coma := float64(b[0] & 0x7)
-				sign := float64(-1)
-				if b[0]>>7 == 0 {
-					sign = 1
-				}
-				r *= sign
-				r /= math.Pow(10, coma)
-				ok = true
-			}
-		}
+	var (
+		x, y float64
+		ok   bool
+		r    float64
+	)
+	if x, y, ok = dec2(b[1]); !ok {
+		return 0, merry.Errorf("недопустимое значение первого байта %X", b[1])
 	}
-	return
+	r += 100000*x + 10000*y
+
+	if x, y, ok = dec2(b[2]); !ok {
+		return 0, merry.Errorf("недопустимое значение второго байта %X", b[2])
+	}
+	r += 1000*x + 100*y
+
+	if x, y, ok = dec2(b[3]); !ok {
+		return 0, merry.Errorf("недопустимое значение третьего байта %X", b[3])
+	}
+	r += 10*x + y
+
+	coma := float64(b[0] & 0x7)
+	sign := float64(-1)
+	if b[0]>>7 == 0 {
+		sign = 1
+	}
+	r *= sign
+	r /= math.Pow(10, coma)
+
+	return r, nil
 }
 
 func dec2(b byte) (v1 float64, v2 float64, ok bool) {

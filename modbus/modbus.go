@@ -64,7 +64,7 @@ func (x Request) GetResponse(log comm.Logger, ctx context.Context, cm comm.T) ([
 		return nil
 	})
 	b, err := cm.GetResponse(log, ctx, x.Bytes())
-	return b, merry.Appendf(err, "модбас=(адрес %d команда %d)", x.Addr, x.ProtoCmd)
+	return b, merry.Appendf(err, "модбас[адрес %d команда %d]", x.Addr, x.ProtoCmd)
 }
 
 func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
@@ -77,7 +77,7 @@ func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
 	}
 	var ok bool
 	if v, ok = ParseBCD6(b[3:]); !ok {
-		err = Err.Here().Appendf("не правильный код BCD: [% X]", b[3:7])
+		err = Err.Here().Appendf("wrong BCD % X", b[3:7])
 	}
 	return
 }
