@@ -23,7 +23,11 @@ type DevCmd uint16
 
 type Coefficient uint16
 
-var Err = merry.Append(comm.Err, "ошибка модбас")
+var (
+	Err            = merry.New("не верный ответ модбас").WithCause(comm.Err)
+	ErrCRC16       = merry.New("несовпадение CRC16 в ответе модбас").WithCause(Err)
+	ErrFloatFormat = merry.New("не верный формат числа с плавающей точкой в ответе модбас")
+)
 
 const (
 	LogKeyAddr         = "модбас_адресс"
@@ -94,7 +98,7 @@ func (x Request) checkResponse(response []byte) error {
 	}
 
 	if h, l := CRC16(response); h != 0 || l != 0 {
-		return Err.Here().Append("CRC16 ответа модбас не ноль")
+		return ErrCRC16.Here()
 	}
 	if response[0] != byte(x.Addr) {
 		return Err.Here().Append("несовпадение адресов модбас запроса %d и ответа %d")

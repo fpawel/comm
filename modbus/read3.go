@@ -44,16 +44,13 @@ func (x RequestRead3) GetResponse(log comm.Logger, ctx context.Context, cm comm.
 }
 
 func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, count int, format FloatBitsFormat) ([]float64, error) {
-	var values []float64
+	values := make([]float64, count)
 
 	cm = cm.WithAppendParse(func(_, response []byte) error {
 		for i := 0; i < count; i++ {
-			n := 3 + i*4
-			v, err := format.ParseFloat(response[n:][:4])
-			if err != nil {
-				return merry.Appendf(err, "поз.%d подстрока % X, ожидалось число %s", n, response[n:n+4], format)
+			if err := parseFloat(&values[i], response, 3+i*4, format); err != nil {
+				return err
 			}
-			values = append(values, v)
 		}
 		return nil
 	})
@@ -69,15 +66,20 @@ func Read3Values(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var
 	return values, err
 }
 
+func parseFloat(result *float64, response []byte, n int, format FloatBitsFormat) error {
+	var err error
+	b := response[n : n+4]
+	*result, err = format.ParseFloat(b)
+	if err != nil {
+		return ErrFloatFormat.Here().Appendf("ожидалось число %s поз.%d подстрока % X", format, n, b)
+	}
+	return nil
+}
+
 func Read3Value(log comm.Logger, ctx context.Context, cm comm.T, addr Addr, var3 Var, format FloatBitsFormat) (float64, error) {
 	var result float64
 	cm = cm.WithAppendParse(func(_, response []byte) error {
-		var err error
-		result, err = format.ParseFloat(response[3:7])
-		if err != nil {
-			return merry.Appendf(err, "поз.3 подстрока % X, ожидалось число %s", response[3:7], format)
-		}
-		return nil
+		return parseFloat(&result, response, 3, format)
 	})
 	_, err := RequestRead3{
 		Addr:           addr,
