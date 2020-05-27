@@ -71,7 +71,7 @@ func parseFloat(result *float64, response []byte, n int, format FloatBitsFormat)
 	b := response[n : n+4]
 	*result, err = format.ParseFloat(b)
 	if err != nil {
-		return ErrFloatFormat.Here().Appendf("ожидалось число %s поз.%d подстрока % X", format, n, b)
+		return merry.Appendf(err, "ожидалось число %s поз.%d подстрока % X", format, n, b).WithCause(ErrFloatFormat)
 	}
 	return nil
 }
