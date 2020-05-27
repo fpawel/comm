@@ -76,8 +76,9 @@ func (x *Request) ParseBCDValue(b []byte) (v float64, err error) {
 		return
 	}
 	var ok bool
-	if v, ok = ParseBCD6(b[3:]); !ok {
-		err = Err.Here().Appendf("wrong BCD % X", b[3:7])
+	if v, err = ParseBCD6(b[3:]); !ok {
+		n := 3
+		err = Err.Here().WithCause(merry.Appendf(err, "поз.%d подстрока % X, ожидалось число BCD", n, b[n:n+4]))
 	}
 	return
 }
