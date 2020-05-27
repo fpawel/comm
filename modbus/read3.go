@@ -67,7 +67,7 @@ func parseFloat(response []byte, n int, format FloatBitsFormat) (float64,error) 
 	b := response[n : n+4]
 	result, err := format.ParseFloat(b)
 	if err != nil {
-		return 0, merry.Appendf(err, "ожидалось число %s, поз.%d, подстрока % X", format, n, b ).
+		return 0, merry.Prependf(err, "ожидалось число %s, поз.%d, подстрока % X", format, n, b ).
 			Appendf("ответ % X", response).
 			WithCause(ErrFloatFormat)
 	}

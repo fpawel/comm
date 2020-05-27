@@ -13,17 +13,17 @@ func ParseBCD6(b []byte) (float64, error) {
 		r    float64
 	)
 	if x, y, ok = dec2(b[1]); !ok {
-		return 0, merry.Errorf("недопустимое значение первого байта %X", b[1])
+		return 0, merry.Errorf("недопустимое значение второго байта %X", b[1])
 	}
 	r += 100000*x + 10000*y
 
 	if x, y, ok = dec2(b[2]); !ok {
-		return 0, merry.Errorf("недопустимое значение второго байта %X", b[2])
+		return 0, merry.Errorf("недопустимое значение третьего байта %X", b[2])
 	}
 	r += 1000*x + 100*y
 
 	if x, y, ok = dec2(b[3]); !ok {
-		return 0, merry.Errorf("недопустимое значение третьего байта %X", b[3])
+		return 0, merry.Errorf("недопустимое значение четвёртого байта %X", b[3])
 	}
 	r += 10*x + y
 
