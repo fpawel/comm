@@ -21,8 +21,6 @@ type Request struct {
 
 type DevCmd uint16
 
-type Coefficient uint16
-
 var (
 	Err            = merry.New("не верный ответ модбас").WithCause(comm.Err)
 	ErrCRC16       = merry.New("несовпадение CRC16 в ответе модбас").WithCause(Err)
@@ -112,11 +110,4 @@ func (x Request) checkResponse(response []byte) error {
 	}
 
 	return nil
-}
-
-func uint16b(v uint16) (b []byte) {
-	b = make([]byte, 2)
-	b[0] = byte(v >> 8)
-	b[1] = byte(v)
-	return
 }
