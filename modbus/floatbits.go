@@ -33,7 +33,10 @@ func (ff FloatBitsFormat) Validate() error {
 	return nil
 }
 
-func (ff FloatBitsFormat) PutFloat(d []byte, v float64) {
+func (ff FloatBitsFormat) PutFloat(d []byte, v float64) error {
+	if len(d) < 4 {
+		return merry.Errorf("FloatBitsFormat.PutFloat: output bytes out of range: 4 bytes awaits, got %d", len(d))
+	}
 	switch ff {
 	case BCD:
 		PutBCD6(d, v)
@@ -50,16 +53,16 @@ func (ff FloatBitsFormat) PutFloat(d []byte, v float64) {
 		n := int32(float32(v))
 		binary.LittleEndian.PutUint32(d, uint32(n))
 	default:
-		panic(ff)
+		return merry.Errorf(`занчение строки формата должно быть из списка %s`, formatParamFormats())
 	}
+	return nil
 }
 
 func (ff FloatBitsFormat) ParseFloat(d []byte) (float64, error) {
+	if len(d) < 4 {
+		return 0, merry.Errorf("FloatBitsFormat.ParseFloat: input bytes out of range: 4 bytes awaits, got %d", len(d))
+	}
 	d = d[:4]
-	_ = d[0]
-	_ = d[1]
-	_ = d[2]
-	_ = d[3]
 
 	floatBits := func(endian binary.ByteOrder) (float64, error) {
 		bits := endian.Uint32(d)

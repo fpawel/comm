@@ -26,7 +26,10 @@ func (x RequestWrite32) Request() Request {
 		byte(x.DeviceCmd),
 		0, 0, 0, 0,
 	}
-	x.Format.PutFloat(r.Data[7:], x.Value)
+	err := x.Format.PutFloat(r.Data[7:], x.Value)
+	if err != nil {
+		panic(err)
+	}
 	return r
 }
 
