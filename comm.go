@@ -7,6 +7,7 @@ import (
 	"github.com/fpawel/comm/internal"
 	"github.com/powerman/structlog"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -41,9 +42,10 @@ const (
 )
 
 type T struct {
-	cfg Config
-	rw  io.ReadWriter
-	prs ParseResponseFunc
+	cfg  Config
+	rw   io.ReadWriter
+	prs  ParseResponseFunc
+	port string
 }
 
 func New(rw io.ReadWriter, cfg Config) T {
@@ -54,6 +56,11 @@ func New(rw io.ReadWriter, cfg Config) T {
 		cfg: cfg,
 		rw:  rw,
 	}
+}
+
+func (x T) WithLockPort(port string) T {
+	x.port = port
+	return x
 }
 
 func (x T) WithReadWriter(rw io.ReadWriter) T {
@@ -100,7 +107,10 @@ func (x T) WithPrependParse(prs ParseResponseFunc) T {
 
 func (x T) GetResponse(log Logger, ctx context.Context, request []byte) ([]byte, error) {
 
+	x.lockPort()
 	response, err := x.getResponse(log, ctx, request)
+	x.unlockPort()
+
 	if err == nil {
 		return response, nil
 	}
@@ -348,7 +358,35 @@ func pause(chDone <-chan struct{}, d time.Duration) {
 	}
 }
 
+func (x T) lockPort() {
+	if len(x.port) == 0 {
+		return
+	}
+	o, _ := lockPorts.LoadOrStore(x.port, new(sync.Mutex))
+	mu, ok := o.(*sync.Mutex)
+	if !ok {
+		panic("unexpected")
+	}
+	mu.Lock()
+}
+
+func (x T) unlockPort() {
+	if len(x.port) == 0 {
+		return
+	}
+	o, ok := lockPorts.Load(x.port)
+	if !ok {
+		panic("unlock not locked port: " + x.port)
+	}
+	mu, ok := o.(*sync.Mutex)
+	if !ok {
+		panic("unexpected")
+	}
+	mu.Unlock()
+}
+
 var (
 	atomicEnableLog int32 = 1
 	atomicNotify          = new(atomic.Value)
+	lockPorts       sync.Map
 )
