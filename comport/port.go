@@ -40,7 +40,48 @@ func (x *Port) Opened() bool {
 	return x.p != nil
 }
 
-func (x *Port) Open() error {
+func (x *Port) Close() error {
+	if x.p == nil {
+		return nil
+	}
+	err := x.p.Close()
+	x.p = nil
+	if err != nil {
+		return merry.Prependf(err, "%s: закрыть", x)
+	}
+	return nil
+}
+
+func (x *Port) Write(buf []byte) (int, error) {
+	if err := x.open(); err != nil {
+		return 0, err
+	}
+	n, err := x.p.Write(buf)
+	if err != nil {
+		err = merry.Prependf(err, "%s: запись", x)
+	}
+	return n, err
+}
+
+func (x *Port) Read(buf []byte) (int, error) {
+	if err := x.open(); err != nil {
+		return 0, err
+	}
+	n, err := readPort(x.p, buf)
+	if err != nil {
+		err = merry.Prependf(err, "%s: считывание", x)
+	}
+	return n, err
+}
+
+func (x *Port) String() string {
+	if len(x.c.Name) > 0 {
+		return x.c.Name
+	}
+	return "СОМ?"
+}
+
+func (x *Port) open() error {
 	if x.p != nil {
 		return nil
 	}
@@ -58,47 +99,6 @@ func (x *Port) Open() error {
 		return merry.Prepend(err, x.c.Name)
 	}
 	return nil
-}
-
-func (x *Port) Close() error {
-	if x.p == nil {
-		return nil
-	}
-	err := x.p.Close()
-	x.p = nil
-	if err != nil {
-		return merry.Prependf(err, "%s: закрыть", x)
-	}
-	return nil
-}
-
-func (x *Port) Write(buf []byte) (int, error) {
-	if err := x.Open(); err != nil {
-		return 0, err
-	}
-	n, err := x.p.Write(buf)
-	if err != nil {
-		err = merry.Prependf(err, "%s: запись", x)
-	}
-	return n, err
-}
-
-func (x *Port) Read(buf []byte) (int, error) {
-	if err := x.Open(); err != nil {
-		return 0, err
-	}
-	n, err := readPort(x.p, buf)
-	if err != nil {
-		err = merry.Prependf(err, "%s: считывание", x)
-	}
-	return n, err
-}
-
-func (x *Port) String() string {
-	if len(x.c.Name) > 0 {
-		return x.c.Name
-	}
-	return "СОМ?"
 }
 
 func readPort(p *port, buf []byte) (int, error) {
